@@ -3,11 +3,13 @@ import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import CourtMap from './components/CourtMap';
@@ -33,6 +35,7 @@ import {
   LEVELS,
   LEVEL_META,
 } from './lib/crowd';
+import { loadReviews, addReview, MAX_BODY, MAX_NAME } from './lib/reviews';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -274,6 +277,37 @@ function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
     }
   };
 
+  // Reviews (loaded lazily for the open court).
+  const [reviews, setReviews] = useState(null); // null = loading
+  const [reviewName, setReviewName] = useState('');
+  const [reviewBody, setReviewBody] = useState('');
+  const [posting, setPosting] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setReviews(null);
+    setReviewBody('');
+    loadReviews(court.id).then((r) => {
+      if (alive) setReviews(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [court.id]);
+
+  const submitReview = async () => {
+    const body = reviewBody.trim();
+    if (!body || posting) return;
+    setPosting(true);
+    const rec = await addReview(court.id, { author: reviewName, body });
+    setPosting(false);
+    if (rec) {
+      setReviews((prev) => [rec, ...(prev || [])]);
+      setReviewBody('');
+    } else {
+      setNote('Couldn’t post review. Try again.');
+    }
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -360,7 +394,7 @@ function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
         )}
       </View>
 
-      <ScrollView style={{ maxHeight: 168 }}>
+      <ScrollView style={styles.cardScroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.sectionLabel}>Open-gym basketball</Text>
         {week.map((d) => (
           <View
@@ -387,7 +421,56 @@ function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
         <Text style={styles.disclaimer}>
           Open-gym times (summer) vary seasonally — verify on sfrecpark.org.
         </Text>
+
+        <Text style={[styles.sectionLabel, styles.reviewsLabel]}>Reviews</Text>
+        {reviews === null ? (
+          <Text style={styles.reviewsMuted}>Loading…</Text>
+        ) : reviews.length === 0 ? (
+          <Text style={styles.reviewsMuted}>No reviews yet — be the first.</Text>
+        ) : (
+          reviews.map((r) => (
+            <View key={r.id} style={styles.review}>
+              <View style={styles.reviewHead}>
+                <Text style={styles.reviewAuthor}>{r.author || 'Anonymous'}</Text>
+                <Text style={styles.reviewAgo}>{timeAgo(r.ts, now)}</Text>
+              </View>
+              <Text style={styles.reviewBody}>{r.body}</Text>
+            </View>
+          ))
+        )}
       </ScrollView>
+
+      <View style={styles.reviewForm}>
+        <TextInput
+          style={styles.reviewNameInput}
+          placeholder="Name (optional)"
+          placeholderTextColor="#9aa7b4"
+          value={reviewName}
+          onChangeText={setReviewName}
+          maxLength={MAX_NAME}
+        />
+        <View style={styles.reviewInputRow}>
+          <TextInput
+            style={styles.reviewBodyInput}
+            placeholder="Add a review…"
+            placeholderTextColor="#9aa7b4"
+            value={reviewBody}
+            onChangeText={setReviewBody}
+            maxLength={MAX_BODY}
+            multiline
+          />
+          <Pressable
+            onPress={submitReview}
+            disabled={!reviewBody.trim() || posting}
+            style={[
+              styles.reviewPost,
+              (!reviewBody.trim() || posting) && styles.reviewPostDisabled,
+            ]}
+          >
+            <Text style={styles.reviewPostText}>{posting ? '…' : 'Post'}</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -472,6 +555,7 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     bottom: 16,
+    maxHeight: Dimensions.get('window').height * 0.82,
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
@@ -481,6 +565,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
+  cardScroll: { flexShrink: 1 },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   cardTitle: { fontSize: 18, fontWeight: '800', color: '#0d1b2a' },
   cardSub: { fontSize: 13, color: '#5b6b7b', marginTop: 2 },
@@ -560,4 +645,47 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontStyle: 'italic',
   },
+
+  reviewsLabel: { marginTop: 14 },
+  reviewsMuted: { fontSize: 13, color: '#9aa7b4', marginTop: 4, fontStyle: 'italic' },
+  review: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eef1f4',
+  },
+  reviewHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  reviewAuthor: { fontSize: 13, fontWeight: '700', color: '#2a3a4a' },
+  reviewAgo: { fontSize: 11, color: '#9aa7b4' },
+  reviewBody: { fontSize: 13, color: '#46586a', lineHeight: 18 },
+
+  reviewForm: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#e3e8ec', paddingTop: 10 },
+  reviewNameInput: {
+    fontSize: 13,
+    color: '#0d1b2a',
+    backgroundColor: '#f4f6f8',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  reviewInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  reviewBodyInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0d1b2a',
+    backgroundColor: '#f4f6f8',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    maxHeight: 80,
+  },
+  reviewPost: {
+    backgroundColor: '#2f74d6',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  reviewPostDisabled: { backgroundColor: '#bcc8d4' },
+  reviewPostText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });

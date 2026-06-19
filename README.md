@@ -34,6 +34,7 @@ stays centered on San Francisco — everything else still works.
 | `lib/useCourts.js` | Fetches/caches court data at launch (bundled→cached→remote) |
 | `lib/hours.js` | Open-now + basketball open-gym logic from per-weekday schedules |
 | `lib/crowd.js` | Crowd check-in store (levels, freshness, "voted X ago") |
+| `lib/reviews.js` | Per-court reviews store (Supabase + local fallback) |
 
 ## Court data (SF Rec & Parks indoor gyms)
 
@@ -71,7 +72,28 @@ The schedules are **seasonal**, so they're refreshed automatically:
   than `MIN_LIVE_OK` centers scrape — so a site redesign **fails the Action and
   notifies you** instead of silently publishing empty schedules.
 
-### Live updates for users (no app release needed)
+### Reviews
+
+Each court's card has a **Reviews** section — a list of comments plus a box to
+add one (optional name + text). Stored in `lib/reviews.js` with the same
+Supabase-or-local pattern as check-ins; loaded lazily per court.
+
+Guards for free-text content: body capped at 1000 chars, optional name at 50,
+and a per-IP rate limit (10 reviews / 10 min) via a Supabase trigger. There's no
+in-app delete — **moderate via the Supabase dashboard** (Table Editor → `reviews`)
+if needed. A `rating` column exists (unused) so star ratings are an easy add.
+
+**Seed your own initial data** in the Supabase SQL editor:
+
+```sql
+insert into public.reviews (court_id, author, body) values
+  ('hamilton-recreation-center', 'Kevin', 'Great runs on weekday evenings, competitive.'),
+  ('mission-recreation-center',  null,    'Gym can get packed after 6pm.');
+```
+
+(`court_id` matches the `id` in `data/courts.js` — e.g. `palega-recreation-center`.)
+
+## Live updates for users (no app release needed)
 
 The app fetches fresh data **on launch** instead of relying only on the bundled
 file (`lib/useCourts.js`):
