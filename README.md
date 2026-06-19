@@ -142,11 +142,17 @@ are set, the app uses local on-device check-ins (you see only your own).
 (`mergeCheckIn`) rather than refetching the whole table — so cost scales with
 *check-ins*, not *users × check-ins*.
 
-**Anti-spam (no cooldown):** each device holds a **single vote per court** —
-tapping another level switches it (remove + add), tapping your pick again removes
-it. So repeated taps can't inflate the count, and misclicks are instantly
-fixable. For stronger protection before a public launch, add a server-side guard
-(a Supabase policy / edge function keyed on IP or a device token).
+**Anti-spam (two layers, no cooldown):**
+1. *Client* — each device holds a **single vote per court** (switching replaces
+   it, tapping your pick again removes it), so taps can't inflate the count and
+   misclicks are instantly fixable.
+2. *Server* — a Supabase `BEFORE INSERT` trigger caps check-ins per client IP
+   (default 30 / 60s; tune in `supabase/schema.sql`). Unlike the client guard,
+   it can't be bypassed by clearing app storage.
+
+Both are pragmatic backstops, not airtight: the anonymous model means shared
+Wi-Fi / mobile CGNAT users share an IP. True per-user protection would need
+auth or device attestation.
 
 ## Ideas for next
 
