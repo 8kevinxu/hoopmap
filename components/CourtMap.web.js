@@ -57,6 +57,8 @@ function ensureStyles() {
       @keyframes glow { from { box-shadow: 0 0 6px 1px rgba(255,140,0,0.65); } to { box-shadow: 0 0 14px 5px rgba(255,40,0,0.95); } }
       .flame { position: absolute; top: -13px; left: 50%; margin-left: -7px; font-size: 13px; transform-origin: 50% 100%; animation: flicker 0.5s ease-in-out infinite alternate; }
       @keyframes flicker { from { transform: scale(0.9) rotate(-4deg); opacity: 0.85; } to { transform: scale(1.12) rotate(4deg); opacity: 1; } }
+      .bounce { animation: bounce 0.6s ease-in-out infinite; }
+      @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
     `;
     document.head.appendChild(style);
   }
@@ -105,9 +107,10 @@ const CourtMap = forwardRef(function CourtMap(
     courts.forEach((c) => {
       const ball =
         '<div class="bball" style="opacity:' + (c.open ? 1 : 0.45) + '">' + BBALL_SVG + '</div>';
+      const bounce = c.crowd === 'moderate' || c.crowd === 'packed' ? ' bounce' : '';
       const icon = L.divIcon({
         className: '',
-        html: '<div class="ballwrap">' + crowdDecoration(c.crowd) + ball + '</div>',
+        html: '<div class="ballwrap' + bounce + '">' + crowdDecoration(c.crowd) + ball + '</div>',
         iconSize: [26, 26],
         iconAnchor: [13, 13],
       });

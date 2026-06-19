@@ -64,6 +64,13 @@ const html = `
       from { transform: scale(0.9) rotate(-4deg); opacity: 0.85; }
       to   { transform: scale(1.12) rotate(4deg); opacity: 1; }
     }
+
+    /* Moderate & packed → ball bounces (more action at the court). */
+    .bounce { animation: bounce 0.6s ease-in-out infinite; }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-3px); }
+    }
   </style>
 </head>
 <body>
@@ -120,9 +127,10 @@ const html = `
       courts.forEach(function (c) {
         var size = 26;
         var ball = '<div class="bball" style="opacity:' + (c.open ? 1 : 0.45) + '">' + BBALL_SVG + '</div>';
+        var bounce = (c.crowd === 'moderate' || c.crowd === 'packed') ? ' bounce' : '';
         var icon = L.divIcon({
           className: '',
-          html: '<div class="ballwrap">' + crowdDecoration(c.crowd) + ball + '</div>',
+          html: '<div class="ballwrap' + bounce + '">' + crowdDecoration(c.crowd) + ball + '</div>',
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2]
         });

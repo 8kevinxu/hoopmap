@@ -178,8 +178,10 @@ auth or device attestation.
 
 ## Ideas for next
 
+- **Social / "let's hoop":** add friends and lightweight intents — ping friends
+  "want to hoop?", or broadcast "planning to hoop at 6pm" / "hooping at Hamilton
+  at 6pm" so people can join. Would need accounts, a friends graph, and
+  notifications (the biggest lift on this list, but the most engaging).
 - **Distance sort:** rank courts by distance from the user.
-- **Server-side rate limit:** complement the per-device cooldown with a Supabase
-  policy/edge function so it can't be bypassed by clearing app storage.
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`
   fields) to bring back outdoor courts or add other sports later.
