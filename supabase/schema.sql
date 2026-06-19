@@ -21,5 +21,11 @@ create policy "anyone can read check-ins"
 create policy "anyone can add a check-in"
   on public.check_ins for insert with check (true);
 
+-- Allow removing a recent check-in (powers "tap your vote again to undo").
+-- Bounded to the last 2h to limit abuse in the anonymous model.
+create policy "anyone can delete a recent check-in"
+  on public.check_ins for delete
+  using (created_at > now() - interval '2 hours');
+
 -- Enable real-time so other users' check-ins push live to the app.
 alter publication supabase_realtime add table public.check_ins;

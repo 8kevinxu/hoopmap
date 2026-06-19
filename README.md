@@ -103,9 +103,10 @@ curated data.
 ## Live crowd check-ins
 
 Tap a court → **"How crowded right now?"** → vote **Empty / Moderate / Packed**.
-The latest check-in shows as e.g. "🔴 Packed · voted 12 min ago", plus a short
-**history** ("👥 4 check-ins in the last hour" and the recent votes), and animates
-the map marker:
+Your pick is highlighted; **tap it again to remove your check-in**, or tap a
+different level to switch. The latest check-in shows as e.g. "🔴 Packed · voted
+12 min ago", plus a short **history** ("👥 4 check-ins in the last hour" and the
+recent votes), and animates the map marker:
 
 - **Empty** → sleepy `z z z` drifting off the basketball
 - **Moderate** → no animation
@@ -122,8 +123,9 @@ otherwise. No UI changes between the two.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. **SQL Editor → New query →** paste [`supabase/schema.sql`](supabase/schema.sql)
-   → **Run** (creates the `check_ins` table, public read/insert policies, and
-   turns on real-time).
+   → **Run** (creates the `check_ins` table, public read/insert/delete policies,
+   and turns on real-time). *Already ran an older version? Re-run just the new
+   `... for delete ...` policy so the tap-to-undo works.*
 3. **Project Settings → API →** copy the **Project URL** and **anon public key**.
 4. Add them to `.env`:
    ```
@@ -140,17 +142,16 @@ are set, the app uses local on-device check-ins (you see only your own).
 (`mergeCheckIn`) rather than refetching the whole table — so cost scales with
 *check-ins*, not *users × check-ins*.
 
-**Rate limiting:** check-ins are throttled per device — at most one per court per
-minute (`COURT_COOLDOWN_MS`) and ≥4s between any two (`GLOBAL_GAP_MS`), persisted
-in AsyncStorage. This is a *soft* guard (cleared by reinstalling). For real abuse
-protection before a public launch, also enforce it server-side (a Supabase
-policy / edge function keyed on IP or a device token).
+**Anti-spam (no cooldown):** each device holds a **single vote per court** —
+tapping another level switches it (remove + add), tapping your pick again removes
+it. So repeated taps can't inflate the count, and misclicks are instantly
+fixable. For stronger protection before a public launch, add a server-side guard
+(a Supabase policy / edge function keyed on IP or a device token).
 
 ## Ideas for next
 
 - **Distance sort:** rank courts by distance from the user.
 - **Server-side rate limit:** complement the per-device cooldown with a Supabase
   policy/edge function so it can't be bypassed by clearing app storage.
-- **Live availability:** let players check in ("I'm here / how crowded").
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`
   fields) to bring back outdoor courts or add other sports later.

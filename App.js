@@ -20,12 +20,16 @@ import {
 import {
   loadCrowd,
   checkIn as recordCheckIn,
+  removeCheckIn,
   subscribe as subscribeCrowd,
   mergeCheckIn,
+  loadMyVotes,
+  saveMyVotes,
   currentLevel,
   countWithin,
   latest,
   timeAgo,
+  FRESH_WINDOW_MS,
   LEVELS,
   LEVEL_META,
 } from './lib/crowd';
@@ -51,23 +55,48 @@ export default function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [locating, setLocating] = useState(true);
   const [now, setNow] = useState(new Date());
-  const [crowd, setCrowd] = useState({}); // { courtId: { level, ts } }
+  const [crowd, setCrowd] = useState({}); // { courtId: [{ id, level, ts }] }
+  const [myVotes, setMyVotes] = useState({}); // { courtId: { id, level, ts } }
 
-  // Load check-ins on mount, and (when shared/Supabase) live-update by merging
-  // each new check-in incrementally — no full refetch per event.
+  // Load check-ins + my votes on mount; (when shared) live-update by merging
+  // new check-ins incrementally and refetching on deletes.
   useEffect(() => {
     loadCrowd().then(setCrowd);
-    const unsubscribe = subscribeCrowd((rec) =>
-      setCrowd((prev) => mergeCheckIn(prev, rec))
+    loadMyVotes().then(setMyVotes);
+    const unsubscribe = subscribeCrowd(
+      (rec) => setCrowd((prev) => mergeCheckIn(prev, rec)),
+      () => loadCrowd().then(setCrowd)
     );
     return unsubscribe;
   }, []);
 
-  // Records the vote, merges it in optimistically, and returns the result so
-  // the card can show feedback (success or a rate-limit message).
-  const handleCheckIn = async (courtId, level) => {
+  const persistMyVote = (courtId, vote) => {
+    setMyVotes((prev) => {
+      const next = { ...prev };
+      if (vote) next[courtId] = vote;
+      else delete next[courtId];
+      saveMyVotes(next);
+      return next;
+    });
+  };
+
+  // Tap a level: check in, switch your vote, or (tapping your current pick) undo.
+  // Returns a result so the card can show feedback.
+  const handleVote = async (courtId, level) => {
+    const mine = myVotes[courtId];
+    if (mine && mine.level === level) {
+      await removeCheckIn(courtId, mine.id); // toggle off
+      persistMyVote(courtId, null);
+      setCrowd(await loadCrowd());
+      return { removed: true };
+    }
     const res = await recordCheckIn(courtId, level);
-    if (res && res.id) setCrowd((prev) => mergeCheckIn(prev, res));
+    if (res && res.id) {
+      if (mine) await removeCheckIn(courtId, mine.id); // replace previous vote
+      persistMyVote(courtId, { id: res.id, level, ts: Date.now() });
+      setCrowd(await loadCrowd());
+      return res;
+    }
     return res;
   };
 
@@ -205,8 +234,9 @@ export default function App() {
         <CourtDetail
           court={selected}
           history={crowd[selected.id] || []}
+          myVote={myVotes[selected.id]}
           now={nowMs}
-          onCheckIn={handleCheckIn}
+          onVote={handleVote}
           onClose={() => setSelectedId(null)}
         />
       )}
@@ -214,13 +244,16 @@ export default function App() {
   );
 }
 
-function CourtDetail({ court, history, now, onCheckIn, onClose }) {
+function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
   const { status, bball } = court;
   const week = getBasketballWeek(court);
-  const level = currentLevel(history, now);
+  const level = currentLevel(history, now); // community's latest
   const last = latest(history);
   const lastHour = countWithin(history, 60 * 60 * 1000, now);
   const recent = history.slice(0, 4);
+
+  // Your own (still-fresh) vote drives which button is highlighted/toggleable.
+  const myLevel = myVote && now - myVote.ts <= FRESH_WINDOW_MS ? myVote.level : null;
 
   const [note, setNote] = useState(null);
   useEffect(() => setNote(null), [court.id]); // reset when switching courts
@@ -230,14 +263,14 @@ function CourtDetail({ court, history, now, onCheckIn, onClose }) {
     return () => clearTimeout(t);
   }, [note]);
 
-  const doCheckIn = async (lv) => {
-    const res = await onCheckIn(court.id, lv);
-    if (res && res.rateLimited) {
-      setNote(`You just checked in — try again in ${Math.ceil(res.retryMs / 1000)}s.`);
+  const doVote = async (lv) => {
+    const res = await onVote(court.id, lv);
+    if (res && res.removed) {
+      setNote('Check-in removed.');
     } else if (res && res.id) {
       setNote('✓ Thanks — check-in recorded!');
     } else {
-      setNote('Couldn’t record check-in. Try again.');
+      setNote('Couldn’t update check-in. Try again.');
     }
   };
 
@@ -286,11 +319,11 @@ function CourtDetail({ court, history, now, onCheckIn, onClose }) {
         <View style={styles.crowdButtons}>
           {LEVELS.map((lv) => {
             const meta = LEVEL_META[lv];
-            const active = level === lv;
+            const active = myLevel === lv;
             return (
               <Pressable
                 key={lv}
-                onPress={() => doCheckIn(lv)}
+                onPress={() => doVote(lv)}
                 style={[
                   styles.crowdBtn,
                   active && { backgroundColor: meta.color, borderColor: meta.color },
@@ -304,7 +337,11 @@ function CourtDetail({ court, history, now, onCheckIn, onClose }) {
           })}
         </View>
 
-        {!!note && <Text style={styles.checkinNote}>{note}</Text>}
+        {note ? (
+          <Text style={styles.checkinNote}>{note}</Text>
+        ) : myLevel ? (
+          <Text style={styles.checkinHint}>Tap your choice again to remove it.</Text>
+        ) : null}
 
         {recent.length > 0 && (
           <View style={styles.history}>
@@ -483,6 +520,7 @@ const styles = StyleSheet.create({
   crowdBtnText: { fontSize: 13, fontWeight: '700', color: '#5b6b7b' },
   crowdBtnTextActive: { color: '#ffffff' },
   checkinNote: { fontSize: 12, color: '#46586a', marginTop: 8, fontWeight: '600' },
+  checkinHint: { fontSize: 11, color: '#9aa7b4', marginTop: 8, fontStyle: 'italic' },
 
   history: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#e3e8ec', paddingTop: 8 },
   historyHead: { fontSize: 12, fontWeight: '700', color: '#46586a', marginBottom: 5 },
