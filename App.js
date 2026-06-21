@@ -51,6 +51,37 @@ function formatUpdated(iso) {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function fmtClock(h24, m) {
+  const period = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return m === 0 ? `${h12} ${period}` : `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function startOfDay(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+// Whole-day difference from today (0 = today, 1 = tomorrow, …).
+function dayDelta(d) {
+  return Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+}
+
+// "Today 3 PM" / "Tue 6/22 6 PM".
+function viewLabel(date) {
+  const day = dayDelta(date) === 0 ? 'Today' : dayChipLabel(date);
+  return `${day} ${fmtClock(date.getHours(), date.getMinutes())}`;
+}
+
+// Day-chip label: "Today" / "Tue 6/22".
+function dayChipLabel(d) {
+  if (dayDelta(d) === 0) return 'Today';
+  return `${DAYS_SHORT[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 export default function App() {
   const mapRef = useRef(null);
   const [openOnly, setOpenOnly] = useState(false);
@@ -60,6 +91,8 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [crowd, setCrowd] = useState({}); // { courtId: [{ id, level, ts }] }
   const [myVotes, setMyVotes] = useState({}); // { courtId: { id, level, ts } }
+  const [pickedTime, setPickedTime] = useState(null); // null = live "now"
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Load check-ins + my votes on mount; (when shared) live-update by merging
   // new check-ins incrementally and refetching on deletes.
@@ -134,14 +167,60 @@ export default function App() {
   // Court data: bundled → cached → freshly fetched (see useCourts).
   const { courts: courtData, generatedAt } = useCourts();
 
+  // "View time": all schedule / open-gym logic runs against this. It tracks the
+  // live clock by default; picking a future day+time freezes it so the map shows
+  // what's open *then* instead of now.
+  const viewTime = pickedTime || now;
+  const isPicked = !!pickedTime;
+
+  // Options for the time picker: the next 7 days, and 30-min slots 9 AM–10 PM.
+  // No SF Rec & Parks indoor gym opens before 9 AM (earliest facility open and
+  // earliest open-gym block in the data are both 9 AM), so slots start there.
+  const days = useMemo(() => {
+    const base = startOfDay(new Date());
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(base);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
+  }, []);
+  const times = useMemo(() => {
+    const out = [];
+    for (let m = 9 * 60; m <= 22 * 60; m += 30) out.push(m);
+    return out;
+  }, []);
+  // Weekdays (0=Sun..6=Sat) that have open-gym basketball at any court. Days with
+  // none (currently Sun + Mon) are greyed out in the picker. Derived from data so
+  // it self-adjusts if the seasonal schedule changes.
+  const bballDays = useMemo(() => {
+    const set = new Set();
+    for (const c of courtData) {
+      (c.basketball || []).forEach((blocks, d) => {
+        if (blocks && blocks.length) set.add(d);
+      });
+    }
+    return set;
+  }, [courtData]);
+  const firstOpenDay = useMemo(
+    () => days.find((d) => bballDays.has(d.getDay())) || days[0],
+    [days, bballDays]
+  );
+  const selDayTs = pickedTime ? startOfDay(pickedTime).getTime() : null;
+  const selMin = pickedTime ? pickedTime.getHours() * 60 + pickedTime.getMinutes() : null;
+  const pickTime = (dayDate, min) => {
+    const d = new Date(dayDate);
+    d.setHours(Math.floor(min / 60), min % 60, 0, 0);
+    setPickedTime(d);
+  };
+
   // Annotated with facility status + basketball open-gym status.
   const courts = useMemo(() => {
     return courtData.map((c) => ({
       ...c,
-      status: getOpenStatus(c, now),
-      bball: getBasketballStatus(c, now),
+      status: getOpenStatus(c, viewTime),
+      bball: getBasketballStatus(c, viewTime),
     }));
-  }, [courtData, now]);
+  }, [courtData, viewTime]);
 
   // "Open now" = drop-in basketball is happening right now.
   const visibleCourts = useMemo(() => {
@@ -159,9 +238,10 @@ export default function App() {
         lng: c.lng,
         indoor: c.indoor,
         open: c.bball.open,
-        crowd: currentLevel(crowd[c.id], nowMs),
+        // Crowd is a live signal; hide it when viewing a future time.
+        crowd: isPicked ? null : currentLevel(crowd[c.id], nowMs),
       })),
-    [visibleCourts, crowd, nowMs]
+    [visibleCourts, crowd, nowMs, isPicked]
   );
 
   const selected = useMemo(
@@ -187,7 +267,7 @@ export default function App() {
         <Text style={styles.title}>🏀 HoopMap SF</Text>
         <Text style={styles.subtitle}>
           {openOnly
-            ? `${visibleCourts.length} with open gym right now`
+            ? `${visibleCourts.length} with open gym ${isPicked ? viewLabel(viewTime) : 'right now'}`
             : `${visibleCourts.length} indoor courts · SF Rec & Parks`}
         </Text>
         {!!generatedAt && (
@@ -195,20 +275,106 @@ export default function App() {
         )}
       </View>
 
-      <View style={styles.filterBar}>
-        <Pressable
-          onPress={() => setOpenOnly((v) => !v)}
-          style={[styles.openToggle, openOnly && styles.openToggleActive]}
-        >
-          <Text
-            style={[
-              styles.openToggleText,
-              openOnly && styles.openToggleTextActive,
-            ]}
+      <View style={styles.controls}>
+        <View style={styles.filterRow}>
+          <Pressable
+            onPress={() => setOpenOnly((v) => !v)}
+            style={[styles.openToggle, openOnly && styles.openToggleActive]}
           >
-            {openOnly ? '✓ Open now' : 'Open now'}
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.openToggleText,
+                openOnly && styles.openToggleTextActive,
+              ]}
+            >
+              {openOnly ? '✓ ' : ''}
+              {isPicked ? 'Open then' : 'Open now'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setPickerOpen((v) => !v)}
+            style={[styles.timePill, (pickerOpen || isPicked) && styles.timePillActive]}
+          >
+            <Text
+              style={[
+                styles.timePillText,
+                (pickerOpen || isPicked) && styles.timePillTextActive,
+              ]}
+            >
+              🕒 {isPicked ? viewLabel(viewTime) : 'Pick a time'}
+            </Text>
+          </Pressable>
+
+          {isPicked && (
+            <Pressable
+              hitSlop={8}
+              onPress={() => setPickedTime(null)}
+              style={styles.timeReset}
+            >
+              <Text style={styles.timeResetText}>✕</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {pickerOpen && (
+          <View style={styles.pickerPanel}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+            >
+              {days.map((d) => {
+                const open = bballDays.has(d.getDay());
+                const active = d.getTime() === selDayTs;
+                return (
+                  <Pressable
+                    key={d.getTime()}
+                    disabled={!open}
+                    onPress={() => pickTime(d, selMin ?? 18 * 60)}
+                    style={[
+                      styles.chip,
+                      active && styles.chipActive,
+                      !open && styles.chipDisabled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        active && styles.chipTextActive,
+                        !open && styles.chipTextDisabled,
+                      ]}
+                    >
+                      {dayChipLabel(d)}
+                      {open ? '' : ' · no hoops'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+            >
+              {times.map((m) => {
+                const active = m === selMin;
+                const dayDate = days.find((x) => x.getTime() === selDayTs) || firstOpenDay;
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => pickTime(dayDate, m)}
+                    style={[styles.chip, active && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                      {fmtClock(Math.floor(m / 60), m % 60)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       <View style={styles.mapWrap}>
@@ -239,6 +405,8 @@ export default function App() {
           history={crowd[selected.id] || []}
           myVote={myVotes[selected.id]}
           now={nowMs}
+          viewTime={viewTime}
+          isPicked={isPicked}
           onVote={handleVote}
           onClose={() => setSelectedId(null)}
         />
@@ -247,9 +415,9 @@ export default function App() {
   );
 }
 
-function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
+function CourtDetail({ court, history, myVote, now, viewTime, isPicked, onVote, onClose }) {
   const { status, bball } = court;
-  const week = getBasketballWeek(court);
+  const week = getBasketballWeek(court, viewTime);
   const level = currentLevel(history, now); // community's latest
   const last = latest(history);
   const lastHour = countWithin(history, 60 * 60 * 1000, now);
@@ -341,6 +509,13 @@ function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
         </View>
       </View>
 
+      {isPicked ? (
+        <View style={styles.futureBox}>
+          <Text style={styles.futureText}>
+            🕒 Showing {viewLabel(viewTime)} — live crowd check-ins are hidden.
+          </Text>
+        </View>
+      ) : (
       <View style={styles.crowdBox}>
         <View style={styles.crowdStatusRow}>
           <Text style={styles.sectionLabel}>How crowded right now?</Text>
@@ -397,6 +572,7 @@ function CourtDetail({ court, history, myVote, now, onVote, onClose }) {
           </View>
         )}
       </View>
+      )}
 
       <Pressable style={styles.expandToggle} onPress={() => setExpanded((v) => !v)}>
         <Text style={styles.expandToggleText}>
@@ -532,6 +708,43 @@ const styles = StyleSheet.create({
   openToggleActive: { backgroundColor: '#1f9d55' },
   openToggleText: { color: '#9db4cc', fontWeight: '700', fontSize: 13 },
   openToggleTextActive: { color: '#fff' },
+
+  controls: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
+  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+
+  timePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: '#1b2b3d',
+  },
+  timePillActive: { backgroundColor: '#2f74d6' },
+  timePillText: { color: '#9db4cc', fontWeight: '700', fontSize: 13 },
+  timePillTextActive: { color: '#fff' },
+  timeReset: { paddingHorizontal: 6, paddingVertical: 9 },
+  timeResetText: { color: '#9db4cc', fontWeight: '700', fontSize: 14 },
+
+  pickerPanel: { marginTop: 10, gap: 8 },
+  chipRow: { gap: 8, paddingRight: 16 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: '#1b2b3d',
+  },
+  chipActive: { backgroundColor: '#e8730c' },
+  chipDisabled: { backgroundColor: '#13202e', opacity: 0.6 },
+  chipText: { color: '#9db4cc', fontWeight: '600', fontSize: 13 },
+  chipTextActive: { color: '#fff' },
+  chipTextDisabled: { color: '#5a6b7d', fontWeight: '500' },
+
+  futureBox: {
+    backgroundColor: '#eef3fb',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+  },
+  futureText: { fontSize: 12, color: '#3b5573', fontWeight: '600', lineHeight: 17 },
 
   mapWrap: { flex: 1, margin: 12, borderRadius: 16, overflow: 'hidden' },
 
