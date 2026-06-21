@@ -14,8 +14,17 @@ import {
 } from 'react-native';
 import CourtMap from './components/CourtMap';
 import AuthModal from './components/AuthModal';
+import RunModal from './components/RunModal';
 import { useAuth } from './lib/auth';
 import { useCourts } from './lib/useCourts';
+import { fmtClock, startOfDay, viewLabel, dayChipLabel } from './lib/datetime';
+import {
+  loadRuns,
+  joinRun,
+  leaveRun,
+  cancelRun,
+  formatRunTime,
+} from './lib/runs';
 import {
   getOpenStatus,
   getBasketballStatus,
@@ -51,37 +60,6 @@ function formatUpdated(iso) {
   if (days === 0) return 'today';
   if (days === 1) return 'yesterday';
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function fmtClock(h24, m) {
-  const period = h24 >= 12 ? 'PM' : 'AM';
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return m === 0 ? `${h12} ${period}` : `${h12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-// Whole-day difference from today (0 = today, 1 = tomorrow, …).
-function dayDelta(d) {
-  return Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
-}
-
-// "Today 3 PM" / "Tue 6/22 6 PM".
-function viewLabel(date) {
-  const day = dayDelta(date) === 0 ? 'Today' : dayChipLabel(date);
-  return `${day} ${fmtClock(date.getHours(), date.getMinutes())}`;
-}
-
-// Day-chip label: "Today" / "Tue 6/22".
-function dayChipLabel(d) {
-  if (dayDelta(d) === 0) return 'Today';
-  return `${DAYS_SHORT[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 export default function App() {
@@ -420,6 +398,8 @@ export default function App() {
           now={nowMs}
           viewTime={viewTime}
           isPicked={isPicked}
+          authUser={user}
+          onRequireAuth={() => setAuthOpen(true)}
           onVote={handleVote}
           onClose={() => setSelectedId(null)}
         />
@@ -432,7 +412,18 @@ export default function App() {
   );
 }
 
-function CourtDetail({ court, history, myVote, now, viewTime, isPicked, onVote, onClose }) {
+function CourtDetail({
+  court,
+  history,
+  myVote,
+  now,
+  viewTime,
+  isPicked,
+  authUser,
+  onRequireAuth,
+  onVote,
+  onClose,
+}) {
   const { status, bball } = court;
   const week = getBasketballWeek(court, viewTime);
   const level = currentLevel(history, now); // community's latest
@@ -464,6 +455,43 @@ function CourtDetail({ court, history, myVote, now, viewTime, isPicked, onVote, 
     } else {
       setNote('Couldn’t update check-in. Try again.');
     }
+  };
+
+  // Pickup runs at this court (loaded for the open court; refetched on actions).
+  const [runs, setRuns] = useState(null); // null = loading
+  const [runModalOpen, setRunModalOpen] = useState(false);
+  const [runBusy, setRunBusy] = useState(null); // run id being joined/left
+  const userId = authUser?.id ?? null;
+  const refreshRuns = () => loadRuns(court.id, userId).then(setRuns);
+  useEffect(() => {
+    let alive = true;
+    setRuns(null);
+    loadRuns(court.id, userId).then((r) => {
+      if (alive) setRuns(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [court.id, userId]);
+
+  const planRun = () => {
+    if (!authUser) return onRequireAuth?.();
+    setRunModalOpen(true);
+  };
+  const toggleRun = async (run) => {
+    if (!authUser) return onRequireAuth?.();
+    setRunBusy(run.id);
+    const { error } = run.joined ? await leaveRun(run.id) : await joinRun(run.id);
+    if (!error) await refreshRuns();
+    else setNote('Couldn’t update run. Try again.');
+    setRunBusy(null);
+  };
+  const removeRun = async (run) => {
+    setRunBusy(run.id);
+    const { error } = await cancelRun(run.id);
+    if (!error) await refreshRuns();
+    else setNote('Couldn’t cancel run. Try again.');
+    setRunBusy(null);
   };
 
   // Reviews (loaded lazily for the open court).
@@ -599,7 +627,56 @@ function CourtDetail({ court, history, myVote, now, viewTime, isPicked, onVote, 
 
       {expanded && (
       <ScrollView style={styles.cardScroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.sectionLabel}>Open-gym basketball</Text>
+        <View style={styles.runsHead}>
+          <Text style={styles.sectionLabel}>Pickup runs</Text>
+          <Pressable style={styles.planBtn} onPress={planRun}>
+            <Text style={styles.planBtnText}>＋ Plan a run</Text>
+          </Pressable>
+        </View>
+        {runs === null ? (
+          <Text style={styles.reviewsMuted}>Loading…</Text>
+        ) : runs.length === 0 ? (
+          <Text style={styles.reviewsMuted}>
+            No runs planned yet — plan one and others can join.
+          </Text>
+        ) : (
+          runs.map((run) => (
+            <View key={run.id} style={styles.runRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.runTime}>🏀 {formatRunTime(run.startsAt)}</Text>
+                <Text style={styles.runMeta}>
+                  {run.mine ? 'You' : run.hostName} · {run.count} going
+                  {run.note ? ` · ${run.note}` : ''}
+                </Text>
+              </View>
+              {run.mine ? (
+                <Pressable
+                  style={[styles.runBtn, styles.runBtnCancel]}
+                  disabled={runBusy === run.id}
+                  onPress={() => removeRun(run)}
+                >
+                  <Text style={styles.runBtnCancelText}>
+                    {runBusy === run.id ? '…' : 'Cancel'}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={[styles.runBtn, run.joined && styles.runBtnJoined]}
+                  disabled={runBusy === run.id}
+                  onPress={() => toggleRun(run)}
+                >
+                  <Text
+                    style={[styles.runBtnText, run.joined && styles.runBtnJoinedText]}
+                  >
+                    {runBusy === run.id ? '…' : run.joined ? 'Leave' : "I’m in"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ))
+        )}
+
+        <Text style={[styles.sectionLabel, styles.reviewsLabel]}>Open-gym basketball</Text>
         {week.map((d) => (
           <View
             key={d.day}
@@ -681,6 +758,14 @@ function CourtDetail({ court, history, myVote, now, viewTime, isPicked, onVote, 
         </View>
       </View>
       )}
+
+      <RunModal
+        visible={runModalOpen}
+        court={court}
+        defaultTime={isPicked ? viewTime : null}
+        onClose={() => setRunModalOpen(false)}
+        onCreated={refreshRuns}
+      />
     </View>
   );
 }
@@ -915,6 +1000,42 @@ const styles = StyleSheet.create({
 
   reviewsLabel: { marginTop: 14 },
   reviewsMuted: { fontSize: 13, color: '#9aa7b4', marginTop: 4, fontStyle: 'italic' },
+
+  runsHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  planBtn: {
+    backgroundColor: '#1f9d55',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  planBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  runRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#eef1f4',
+  },
+  runTime: { fontSize: 14, fontWeight: '700', color: '#0d1b2a' },
+  runMeta: { fontSize: 12, color: '#5b6b7b', marginTop: 1 },
+  runBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1.5,
+    borderColor: '#2f74d6',
+  },
+  runBtnText: { color: '#2f74d6', fontWeight: '700', fontSize: 12 },
+  runBtnJoined: { backgroundColor: '#2f74d6' },
+  runBtnJoinedText: { color: '#fff' },
+  runBtnCancel: { borderColor: '#d4dbe2' },
+  runBtnCancelText: { color: '#8a99a8', fontWeight: '700', fontSize: 12 },
   review: {
     marginTop: 8,
     paddingTop: 8,

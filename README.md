@@ -35,6 +35,11 @@ stays centered on San Francisco — everything else still works.
 | `lib/hours.js` | Open-now + basketball open-gym logic from per-weekday schedules |
 | `lib/crowd.js` | Crowd check-in store (levels, freshness, "voted X ago") |
 | `lib/reviews.js` | Per-court reviews store (Supabase + local fallback) |
+| `lib/datetime.js` | Shared date helpers (time picker + run form) |
+| `lib/auth.js` | Account state (Supabase Auth: session, profile, sign in/out) |
+| `lib/runs.js` | "Plan a run" store (create/join/leave/cancel pickup runs) |
+| `components/AuthModal.js` | Sign in / create account / account sheet |
+| `components/RunModal.js` | "Plan a run" form (day/time + note) |
 
 ## Court data (SF Rec & Parks indoor gyms)
 
@@ -189,20 +194,40 @@ names can show in social features.
 
 Setup (on top of the Supabase steps under *Live crowd check-ins*):
 
-1. Re-run [`supabase/schema.sql`](supabase/schema.sql) — it now also creates the
-   `profiles` table, its policies, and the signup trigger (all idempotent).
+1. Run the **Accounts** section at the bottom of
+   [`supabase/schema.sql`](supabase/schema.sql) (the `profiles` table, its
+   policies, and the signup trigger). The file's earlier sections use plain
+   `create policy`, so don't re-run the whole file wholesale on an existing
+   project — just run the new section once.
 2. **Authentication → Providers → Email** is enabled by default. For frictionless
    testing, turn **off "Confirm email"** there; keep it **on** for production
    (sign-up then asks the user to confirm via email before first login).
 
 When Supabase isn't configured, the account button is simply hidden.
 
+## Pickup runs ("plan a run")
+
+Signed-in users can **plan a run** at a court: open a court → expand details →
+**Pickup runs** → **＋ Plan a run**, pick a day/time (limited to that court's
+open-gym days, reusing the map's time picker) and an optional note. Others see
+open runs on the court card and tap **I'm in** to join; the host sees a roster
+count and can **Cancel**. Code lives in `lib/runs.js` + `components/RunModal.js`.
+
+Runs are **visible to all signed-in users for now**. The schema already carries a
+`visibility` column (`public` | `friends`) so the upcoming friends graph can scope
+runs to friends with just a filter + an RLS policy. Setup: run the **Social /
+"plan a run"** section of [`supabase/schema.sql`](supabase/schema.sql) once — it
+adds `hoop_runs` / `hoop_run_participants`, their policies, real-time, and a
+trigger that auto-joins the host (the realtime adds are guarded, so that
+sub-block is safe to re-run).
+
 ## Ideas for next
 
-- **Social / "let's hoop":** accounts now exist (above) — next is a friends graph
-  and lightweight intents: ping friends "want to hoop?", or broadcast "planning to
-  hoop at 6pm" / "hooping at Hamilton at 6pm" so people can join. Still needs the
-  friends graph and notifications.
+- **Friends graph:** add friends by code/invite link (request → accept), then a
+  Friends tab and a feed of friends' runs. Scope run visibility to `friends`.
+- **Push notifications:** `expo-notifications` so a "run planned" / "I'm in" pings
+  reach people who don't have the app open (needs a dev build).
+- **"Down to hoop" presence:** one-tap "available now" status, surfaced to friends.
 - **Distance sort:** rank courts by distance from the user.
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`
   fields) to bring back outdoor courts or add other sports later.
