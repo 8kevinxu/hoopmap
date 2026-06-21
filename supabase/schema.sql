@@ -159,3 +159,50 @@ drop trigger if exists reviews_rate_limit_trg on public.reviews;
 create trigger reviews_rate_limit_trg
   before insert on public.reviews
   for each row execute function public.reviews_rate_limit();
+
+-- ===========================================================================
+-- Accounts: profiles (one row per auth user, holds the public display name).
+-- Supabase Auth (email + password) manages auth.users; this table adds the
+-- app-level profile. Sign-in method: Dashboard → Authentication → Providers →
+-- Email (enabled by default). For frictionless local testing you can turn OFF
+-- "Confirm email" there; keep it ON for production.
+-- ===========================================================================
+
+create table if not exists public.profiles (
+  id           uuid        primary key references auth.users (id) on delete cascade,
+  display_name text        check (display_name is null or char_length(display_name) between 1 and 50),
+  created_at   timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+-- Profiles are public (names show up in social features); users edit only theirs.
+create policy "profiles are readable by everyone"
+  on public.profiles for select using (true);
+
+create policy "users can insert their own profile"
+  on public.profiles for insert with check (auth.uid() = id);
+
+create policy "users can update their own profile"
+  on public.profiles for update using (auth.uid() = id);
+
+-- Auto-create a profile row on signup, pulling display_name from the metadata
+-- passed to supabase.auth.signUp({ options: { data: { display_name } } }).
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (new.id, nullif(new.raw_user_meta_data ->> 'display_name', ''))
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();

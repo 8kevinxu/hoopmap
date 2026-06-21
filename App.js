@@ -13,6 +13,8 @@ import {
   View,
 } from 'react-native';
 import CourtMap from './components/CourtMap';
+import AuthModal from './components/AuthModal';
+import { useAuth } from './lib/auth';
 import { useCourts } from './lib/useCourts';
 import {
   getOpenStatus,
@@ -93,6 +95,8 @@ export default function App() {
   const [myVotes, setMyVotes] = useState({}); // { courtId: { id, level, ts } }
   const [pickedTime, setPickedTime] = useState(null); // null = live "now"
   const [pickerOpen, setPickerOpen] = useState(false);
+  const { enabled: authEnabled, user, displayName } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
 
   // Load check-ins + my votes on mount; (when shared) live-update by merging
   // new check-ins incrementally and refetching on deletes.
@@ -264,14 +268,23 @@ export default function App() {
       <StatusBar style="light" />
 
       <View style={styles.header}>
-        <Text style={styles.title}>🏀 HoopMap SF</Text>
-        <Text style={styles.subtitle}>
-          {openOnly
-            ? `${visibleCourts.length} with open gym ${isPicked ? viewLabel(viewTime) : 'right now'}`
-            : `${visibleCourts.length} indoor courts · SF Rec & Parks`}
-        </Text>
-        {!!generatedAt && (
-          <Text style={styles.updated}>Updated {formatUpdated(generatedAt)}</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>🏀 HoopMap SF</Text>
+          <Text style={styles.subtitle}>
+            {openOnly
+              ? `${visibleCourts.length} with open gym ${isPicked ? viewLabel(viewTime) : 'right now'}`
+              : `${visibleCourts.length} indoor courts · SF Rec & Parks`}
+          </Text>
+          {!!generatedAt && (
+            <Text style={styles.updated}>Updated {formatUpdated(generatedAt)}</Text>
+          )}
+        </View>
+        {authEnabled && (
+          <Pressable style={styles.account} onPress={() => setAuthOpen(true)}>
+            <Text style={styles.accountText} numberOfLines={1}>
+              {user ? `👤 ${displayName || 'Account'}` : 'Sign in'}
+            </Text>
+          </Pressable>
         )}
       </View>
 
@@ -410,6 +423,10 @@ export default function App() {
           onVote={handleVote}
           onClose={() => setSelectedId(null)}
         />
+      )}
+
+      {authEnabled && (
+        <AuthModal visible={authOpen} onClose={() => setAuthOpen(false)} />
       )}
     </SafeAreaView>
   );
@@ -670,7 +687,23 @@ function CourtDetail({ court, history, myVote, now, viewTime, isPicked, onVote, 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0d1b2a' },
-  header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  headerText: { flex: 1 },
+  account: {
+    backgroundColor: '#1b2b3d',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    maxWidth: 150,
+  },
+  accountText: { color: '#cfe0f0', fontWeight: '700', fontSize: 13 },
   title: { color: '#fff', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#9db4cc', fontSize: 13, marginTop: 2 },
   updated: { color: '#6f8298', fontSize: 11, marginTop: 2 },

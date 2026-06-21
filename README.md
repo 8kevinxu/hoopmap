@@ -176,12 +176,33 @@ Both are pragmatic backstops, not airtight: the anonymous model means shared
 Wi-Fi / mobile CGNAT users share an IP. True per-user protection would need
 auth or device attestation.
 
+## Accounts (optional)
+
+Accounts are the foundation for social features. They're **optional** — the map,
+check-ins, and reviews all work signed-out; you only need an account for social.
+
+Sign-in is **email + password** via Supabase Auth (`lib/auth.js`). Tap **Sign in**
+in the header to create an account (with a display name) or log in; the session
+persists across launches. Profiles live in a `profiles` table (`id → auth.users`,
+`display_name`), auto-created on signup by a DB trigger and **public-readable** so
+names can show in social features.
+
+Setup (on top of the Supabase steps under *Live crowd check-ins*):
+
+1. Re-run [`supabase/schema.sql`](supabase/schema.sql) — it now also creates the
+   `profiles` table, its policies, and the signup trigger (all idempotent).
+2. **Authentication → Providers → Email** is enabled by default. For frictionless
+   testing, turn **off "Confirm email"** there; keep it **on** for production
+   (sign-up then asks the user to confirm via email before first login).
+
+When Supabase isn't configured, the account button is simply hidden.
+
 ## Ideas for next
 
-- **Social / "let's hoop":** add friends and lightweight intents — ping friends
-  "want to hoop?", or broadcast "planning to hoop at 6pm" / "hooping at Hamilton
-  at 6pm" so people can join. Would need accounts, a friends graph, and
-  notifications (the biggest lift on this list, but the most engaging).
+- **Social / "let's hoop":** accounts now exist (above) — next is a friends graph
+  and lightweight intents: ping friends "want to hoop?", or broadcast "planning to
+  hoop at 6pm" / "hooping at Hamilton at 6pm" so people can join. Still needs the
+  friends graph and notifications.
 - **Distance sort:** rank courts by distance from the user.
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`
   fields) to bring back outdoor courts or add other sports later.
