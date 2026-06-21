@@ -15,6 +15,7 @@ import {
 import CourtMap from './components/CourtMap';
 import AuthModal from './components/AuthModal';
 import RunModal from './components/RunModal';
+import FriendsModal from './components/FriendsModal';
 import { useAuth } from './lib/auth';
 import { useCourts } from './lib/useCourts';
 import { fmtClock, startOfDay, viewLabel, dayChipLabel } from './lib/datetime';
@@ -75,6 +76,7 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const { enabled: authEnabled, user, displayName } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   // Load check-ins + my votes on mount; (when shared) live-update by merging
   // new check-ins incrementally and refetching on deletes.
@@ -258,11 +260,18 @@ export default function App() {
           )}
         </View>
         {authEnabled && (
-          <Pressable style={styles.account} onPress={() => setAuthOpen(true)}>
-            <Text style={styles.accountText} numberOfLines={1}>
-              {user ? `👤 ${displayName || 'Account'}` : 'Sign in'}
-            </Text>
-          </Pressable>
+          <View style={styles.headerBtns}>
+            {user && (
+              <Pressable style={styles.account} onPress={() => setFriendsOpen(true)}>
+                <Text style={styles.accountText}>👥 Friends</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.account} onPress={() => setAuthOpen(true)}>
+              <Text style={styles.accountText} numberOfLines={1}>
+                {user ? `👤 ${displayName || 'Account'}` : 'Sign in'}
+              </Text>
+            </Pressable>
+          </View>
         )}
       </View>
 
@@ -407,6 +416,9 @@ export default function App() {
 
       {authEnabled && (
         <AuthModal visible={authOpen} onClose={() => setAuthOpen(false)} />
+      )}
+      {authEnabled && user && (
+        <FriendsModal visible={friendsOpen} onClose={() => setFriendsOpen(false)} />
       )}
     </SafeAreaView>
   );
@@ -781,6 +793,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   headerText: { flex: 1 },
+  headerBtns: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   account: {
     backgroundColor: '#1b2b3d',
     paddingHorizontal: 12,

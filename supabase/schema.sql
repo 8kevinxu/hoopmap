@@ -295,3 +295,103 @@ begin
     alter publication supabase_realtime add table public.hoop_run_participants;
   end if;
 end $$;
+
+-- ===========================================================================
+-- Social: friends graph — friend codes + request/accept friendships.
+-- Each profile gets a unique short code; you add a friend by their code, which
+-- creates a pending request the other person accepts. Builds on profiles above.
+-- ===========================================================================
+
+-- Short, shareable, unambiguous friend code (no 0/O/1/I/L) on each profile.
+alter table public.profiles add column if not exists friend_code text unique;
+
+create or replace function public.gen_friend_code()
+returns text
+language plpgsql
+as $$
+declare
+  alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  code text;
+  i int;
+begin
+  loop
+    code := '';
+    for i in 1..6 loop
+      code := code || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1);
+    end loop;
+    exit when not exists (select 1 from public.profiles where friend_code = code);
+  end loop;
+  return code;
+end;
+$$;
+
+-- Assign a code on profile insert when one isn't supplied.
+create or replace function public.set_friend_code()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.friend_code is null then
+    new.friend_code := public.gen_friend_code();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_set_friend_code on public.profiles;
+create trigger profiles_set_friend_code
+  before insert on public.profiles
+  for each row execute function public.set_friend_code();
+
+-- Backfill any existing profiles (one at a time so codes stay unique).
+do $$
+declare r record;
+begin
+  for r in select id from public.profiles where friend_code is null loop
+    update public.profiles set friend_code = public.gen_friend_code() where id = r.id;
+  end loop;
+end $$;
+
+create table if not exists public.friendships (
+  id          uuid        primary key default gen_random_uuid(),
+  requester   uuid        not null references public.profiles (id) on delete cascade,
+  addressee   uuid        not null references public.profiles (id) on delete cascade,
+  status      text        not null default 'pending' check (status in ('pending', 'accepted', 'declined')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  check (requester <> addressee),
+  unique (requester, addressee)
+);
+
+create index if not exists friendships_addressee_idx on public.friendships (addressee, status);
+create index if not exists friendships_requester_idx on public.friendships (requester, status);
+
+alter table public.friendships enable row level security;
+
+-- You can only see, send, answer, and remove friendships you're part of.
+create policy "see your friendships"
+  on public.friendships for select
+  using (requester = auth.uid() or addressee = auth.uid());
+
+create policy "send friend requests"
+  on public.friendships for insert
+  with check (requester = auth.uid() and requester <> addressee);
+
+create policy "respond to requests you received"
+  on public.friendships for update
+  using (addressee = auth.uid());
+
+create policy "remove a friendship you're in"
+  on public.friendships for delete
+  using (requester = auth.uid() or addressee = auth.uid());
+
+-- Real-time so incoming requests / accepts can update the Friends view live.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'friendships'
+  ) then
+    alter publication supabase_realtime add table public.friendships;
+  end if;
+end $$;

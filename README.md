@@ -40,6 +40,8 @@ stays centered on San Francisco — everything else still works.
 | `lib/runs.js` | "Plan a run" store (create/join/leave/cancel pickup runs) |
 | `components/AuthModal.js` | Sign in / create account / account sheet |
 | `components/RunModal.js` | "Plan a run" form (day/time + note) |
+| `lib/friends.js` | Friends graph (codes, add/accept/remove) |
+| `components/FriendsModal.js` | Friends sheet (your code, add by code, requests) |
 
 ## Court data (SF Rec & Parks indoor gyms)
 
@@ -221,13 +223,27 @@ adds `hoop_runs` / `hoop_run_participants`, their policies, real-time, and a
 trigger that auto-joins the host (the realtime adds are guarded, so that
 sub-block is safe to re-run).
 
+## Friends
+
+Signed-in users can connect via **friend codes**. The header **👥 Friends** sheet
+shows your code (with **Share**), an **add by code** box, incoming **requests**
+(accept/decline), and your **friends list**. Adding by code sends a request the
+other person accepts; if they'd already requested you, adding them completes it.
+Each profile gets a unique 6-char code (no ambiguous characters) via a DB trigger.
+Code lives in `lib/friends.js` + `components/FriendsModal.js`.
+
+Setup: run the **friends graph** section of [`supabase/schema.sql`](supabase/schema.sql)
+once — it adds the `friend_code` column (+ generator/backfill) and the
+`friendships` table, policies, and real-time.
+
 ## Ideas for next
 
-- **Friends graph:** add friends by code/invite link (request → accept), then a
-  Friends tab and a feed of friends' runs. Scope run visibility to `friends`.
+- **Friends + runs:** scope run visibility to `friends` and add a feed of friends'
+  upcoming runs (the `hoop_runs.visibility` column is ready for this).
 - **Push notifications:** `expo-notifications` so a "run planned" / "I'm in" pings
   reach people who don't have the app open (needs a dev build).
 - **"Down to hoop" presence:** one-tap "available now" status, surfaced to friends.
+- **Invite links:** wrap a friend code in a deep link to add with one tap.
 - **Distance sort:** rank courts by distance from the user.
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`
   fields) to bring back outdoor courts or add other sports later.
