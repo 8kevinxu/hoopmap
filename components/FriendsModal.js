@@ -21,14 +21,17 @@ import {
   removeFriendship,
 } from '../lib/friends';
 import { loadSignals, cancelSignal, subscribeSignals } from '../lib/signals';
+import { loadUpcomingRuns, joinRun, leaveRun, formatRunTime } from '../lib/runs';
 import { viewLabel } from '../lib/datetime';
 import SignalModal from './SignalModal';
 
-export default function FriendsModal({ visible, onClose }) {
+export default function FriendsModal({ visible, onClose, courtsById = {} }) {
   const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
   const [incoming, setIncoming] = useState([]);
   const [signals, setSignals] = useState([]);
+  const [runs, setRuns] = useState([]);
+  const [runBusy, setRunBusy] = useState(null);
   const [signalOpen, setSignalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [addInput, setAddInput] = useState('');
@@ -36,16 +39,18 @@ export default function FriendsModal({ visible, onClose }) {
   const [msg, setMsg] = useState(null); // { kind: 'ok' | 'err', text }
 
   const refresh = async () => {
-    const [c, f, i, s] = await Promise.all([
+    const [c, f, i, s, r] = await Promise.all([
       getMyCode(),
       listFriends(),
       listIncomingRequests(),
       loadSignals(),
+      loadUpcomingRuns(),
     ]);
     setCode(c);
     setFriends(f);
     setIncoming(i);
     setSignals(s);
+    setRuns(r);
   };
 
   useEffect(() => {
@@ -95,6 +100,13 @@ export default function FriendsModal({ visible, onClose }) {
     await cancelSignal(id);
     await refresh();
     setBusy(false);
+  };
+  const onToggleRun = async (run) => {
+    setRunBusy(run.id);
+    if (run.joined) await leaveRun(run.id);
+    else await joinRun(run.id);
+    await refresh();
+    setRunBusy(null);
   };
 
   const shareCode = async () => {
@@ -151,6 +163,39 @@ export default function FriendsModal({ visible, onClose }) {
                     {s.mine && (
                       <Pressable hitSlop={8} disabled={busy} onPress={() => onCancelSignal(s.id)}>
                         <Text style={styles.removeText}>Cancel</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                ))
+              )}
+
+              {/* Upcoming runs */}
+              <Text style={[styles.label, styles.sectionGap]}>Upcoming runs</Text>
+              {runs.length === 0 ? (
+                <Text style={styles.muted}>
+                  No upcoming runs — plan one from a court on the map.
+                </Text>
+              ) : (
+                runs.map((run) => (
+                  <View key={run.id} style={styles.row}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rowName}>
+                        🏀 {courtsById[run.courtId] || 'A court'}
+                      </Text>
+                      <Text style={styles.signalNote}>
+                        {formatRunTime(run.startsAt)} · {run.mine ? 'You' : run.hostName} ·{' '}
+                        {run.count} going{run.note ? ` · ${run.note}` : ''}
+                      </Text>
+                    </View>
+                    {!run.mine && (
+                      <Pressable
+                        style={[styles.smallBtn, run.joined ? styles.declineBtn : styles.acceptBtn]}
+                        disabled={runBusy === run.id}
+                        onPress={() => onToggleRun(run)}
+                      >
+                        <Text style={run.joined ? styles.declineText : styles.acceptText}>
+                          {runBusy === run.id ? '…' : run.joined ? 'Leave' : 'I’m in'}
+                        </Text>
                       </Pressable>
                     )}
                   </View>

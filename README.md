@@ -213,17 +213,18 @@ When Supabase isn't configured, the account button is simply hidden.
 
 Signed-in users can **plan a run** at a court: open a court → expand details →
 **Pickup runs** → **＋ Plan a run**, pick a day/time (limited to that court's
-open-gym days, reusing the map's time picker) and an optional note. Others see
-open runs on the court card and tap **I'm in** to join; the host sees a roster
-count and can **Cancel**. Code lives in `lib/runs.js` + `components/RunModal.js`.
+open-gym days, reusing the map's time picker), choose **who can see it**
+(**Friends**, the default, or **Anyone**), and an optional note. Others who can
+see it tap **I'm in** to join; the host sees a roster count and can **Cancel**.
+Code lives in `lib/runs.js` + `components/RunModal.js`.
 
-Runs are **visible to all signed-in users for now**. The schema already carries a
-`visibility` column (`public` | `friends`) so the upcoming friends graph can scope
-runs to friends with just a filter + an RLS policy. Setup: run the **Social /
-"plan a run"** section of [`supabase/schema.sql`](supabase/schema.sql) once — it
-adds `hoop_runs` / `hoop_run_participants`, their policies, real-time, and a
-trigger that auto-joins the host (the realtime adds are guarded, so that
-sub-block is safe to re-run).
+Visibility is enforced by RLS via the `visibility` column (`public` | `friends`):
+public runs are readable by all, friends-only runs only by the host and accepted
+friends (`loadUpcomingRuns` powers the Friends-sheet feed across all courts).
+Setup: run the **Social / "plan a run"** section of
+[`supabase/schema.sql`](supabase/schema.sql) and the later **Friends + runs**
+policy once — they add `hoop_runs` / `hoop_run_participants`, policies, real-time,
+and the host auto-join trigger (the realtime adds are guarded, so safe to re-run).
 
 ## Friends
 
@@ -232,7 +233,9 @@ shows your code (with **Share**), an **add by code** box, incoming **requests**
 (accept/decline), and your **friends list**. Adding by code sends a request the
 other person accepts; if they'd already requested you, adding them completes it.
 Each profile gets a unique 6-char code (no ambiguous characters) via a DB trigger.
-Code lives in `lib/friends.js` + `components/FriendsModal.js`.
+The sheet also shows an **Upcoming runs** feed (friends' + your runs you can see,
+with Join) so runs are discoverable without tapping each court. Code lives in
+`lib/friends.js` + `components/FriendsModal.js`.
 
 Setup: run the **friends graph** section of [`supabase/schema.sql`](supabase/schema.sql)
 once — it adds the `friend_code` column (+ generator/backfill) and the
@@ -257,8 +260,6 @@ Setup: run the **"down to hoop" signals** section of
 
 - **Push notifications:** `expo-notifications` so runs / signals reach people who
   don't have the app open (needs a dev build). Turns the in-app feed into real pings.
-- **Friends + runs:** scope run visibility to `friends` and add a feed of friends'
-  upcoming runs (the `hoop_runs.visibility` column is ready for this).
 - **Invite links:** wrap a friend code in a deep link to add with one tap.
 - **Distance sort:** rank courts by distance from the user.
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`

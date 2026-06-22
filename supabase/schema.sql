@@ -447,3 +447,23 @@ begin
     alter publication supabase_realtime add table public.hoop_signals;
   end if;
 end $$;
+
+-- ===========================================================================
+-- Friends + runs: let friends see friends-only runs. Run once, on top of the
+-- runs + friends sections above. (Public and own runs are already covered by
+-- the "public runs are readable" policy; multiple SELECT policies are OR'd.)
+-- ===========================================================================
+
+create policy "friends can see friends-only runs"
+  on public.hoop_runs for select
+  using (
+    visibility = 'friends'
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and (
+          (f.requester = auth.uid() and f.addressee = hoop_runs.host)
+          or (f.addressee = auth.uid() and f.requester = hoop_runs.host)
+        )
+    )
+  );

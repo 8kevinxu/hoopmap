@@ -51,6 +51,7 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
 
   const [picked, setPicked] = useState(null);
   const [note, setNote] = useState('');
+  const [visibility, setVisibility] = useState('friends');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -60,6 +61,7 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
     if (!visible) return;
     setError(null);
     setNote('');
+    setVisibility('friends');
     setBusy(false);
     const dt = defaultTime ? new Date(defaultTime) : null;
     const baseDay = dt && blocksFor(dt.getDay()).length ? startOfDay(dt) : firstOpenDay;
@@ -104,6 +106,7 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
       courtId: court.id,
       startsAt: picked.toISOString(),
       note,
+      visibility,
     });
     setBusy(false);
     if (error) {
@@ -203,6 +206,36 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
             </ScrollView>
           )}
 
+          <Text style={styles.label}>Who can see it</Text>
+          <View style={styles.toggle}>
+            <Pressable
+              style={[styles.toggleItem, visibility === 'friends' && styles.toggleActive]}
+              onPress={() => setVisibility('friends')}
+            >
+              <Text
+                style={[
+                  styles.toggleText,
+                  visibility === 'friends' && styles.toggleTextActive,
+                ]}
+              >
+                Friends
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.toggleItem, visibility === 'public' && styles.toggleActive]}
+              onPress={() => setVisibility('public')}
+            >
+              <Text
+                style={[
+                  styles.toggleText,
+                  visibility === 'public' && styles.toggleTextActive,
+                ]}
+              >
+                Anyone
+              </Text>
+            </Pressable>
+          </View>
+
           <TextInput
             style={styles.note}
             placeholder="Add a note (optional) — e.g. “full court 5s”"
@@ -264,6 +297,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   hint: { fontSize: 12, color: '#5b6b7b', marginBottom: 8, fontStyle: 'italic' },
+  toggle: {
+    flexDirection: 'row',
+    backgroundColor: '#eef1f4',
+    borderRadius: 10,
+    padding: 3,
+  },
+  toggleItem: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
+  toggleActive: { backgroundColor: '#2f74d6' },
+  toggleText: { color: '#5b6b7b', fontWeight: '700', fontSize: 14 },
+  toggleTextActive: { color: '#fff' },
   chipRow: { gap: 8, paddingRight: 8 },
   chip: {
     paddingHorizontal: 12,

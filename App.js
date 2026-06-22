@@ -218,6 +218,12 @@ export default function App() {
     setPickedTime(d);
   };
 
+  // Court id → name, for labeling runs in the Friends feed.
+  const courtsById = useMemo(
+    () => Object.fromEntries(courtData.map((c) => [c.id, c.name])),
+    [courtData]
+  );
+
   // Annotated with facility status + basketball open-gym status.
   const courts = useMemo(() => {
     return courtData.map((c) => ({
@@ -444,7 +450,11 @@ export default function App() {
         <AuthModal visible={authOpen} onClose={() => setAuthOpen(false)} />
       )}
       {authEnabled && user && (
-        <FriendsModal visible={friendsOpen} onClose={() => setFriendsOpen(false)} />
+        <FriendsModal
+          visible={friendsOpen}
+          onClose={() => setFriendsOpen(false)}
+          courtsById={courtsById}
+        />
       )}
     </SafeAreaView>
   );
