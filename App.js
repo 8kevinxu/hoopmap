@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -16,9 +16,11 @@ import CourtMap from './components/CourtMap';
 import AuthModal from './components/AuthModal';
 import RunModal from './components/RunModal';
 import FriendsModal from './components/FriendsModal';
+import NearbyList from './components/NearbyList';
 import { useAuth } from './lib/auth';
 import { useCourts } from './lib/useCourts';
-import { fmtClock, startOfDay, viewLabel, dayChipLabel } from './lib/datetime';
+import { fmtClock, startOfDay, viewLabel, dayChipLabel, fmtDuration } from './lib/datetime';
+import { haversineMiles, formatDistance } from './lib/distance';
 import { loadSignals, subscribeSignals } from './lib/signals';
 import {
   loadRuns,
@@ -31,6 +33,7 @@ import {
   getOpenStatus,
   getBasketballStatus,
   getBasketballWeek,
+  getBasketballRemaining,
 } from './lib/hours';
 import {
   loadCrowd,
@@ -66,6 +69,7 @@ function formatUpdated(iso) {
 
 export default function App() {
   const mapRef = useRef(null);
+  const didCenterRef = useRef(false); // auto-center on the user only once
   const [openOnly, setOpenOnly] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -78,6 +82,7 @@ export default function App() {
   const { enabled: authEnabled, user, displayName } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [nearbyOpen, setNearbyOpen] = useState(false);
   const [signalCount, setSignalCount] = useState(0); // active friend "down to hoop" signals
 
   // Load check-ins + my votes on mount; (when shared) live-update by merging
@@ -147,27 +152,35 @@ export default function App() {
     };
   }, [authEnabled, user?.id]);
 
-  // Ask for location once on mount; fall back silently to the SF-wide view.
-  useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const pos = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          setUserLocation({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-        }
-      } catch (e) {
-        // Ignore — map still works centered on San Francisco.
-      } finally {
-        setLocating(false);
+  // Ask for location (on mount, and again if the user taps "enable location").
+  const requestLocation = useCallback(async () => {
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       }
-    })();
+    } catch (e) {
+      // Ignore — map still works centered on San Francisco.
+    } finally {
+      setLocating(false);
+    }
   }, []);
+
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
+
+  // Center the map on the user the first time we get a fix.
+  useEffect(() => {
+    if (userLocation && !didCenterRef.current && mapRef.current) {
+      mapRef.current.recenter(userLocation);
+      didCenterRef.current = true;
+    }
+  }, [userLocation]);
 
   // Court data: bundled → cached → freshly fetched (see useCourts).
   const { courts: courtData, generatedAt } = useCourts();
@@ -224,14 +237,19 @@ export default function App() {
     [courtData]
   );
 
-  // Annotated with facility status + basketball open-gym status.
+  // Annotated with facility status, basketball open-gym status, minutes of
+  // open-gym left, and distance from the user (when location is available).
   const courts = useMemo(() => {
     return courtData.map((c) => ({
       ...c,
       status: getOpenStatus(c, viewTime),
       bball: getBasketballStatus(c, viewTime),
+      remaining: getBasketballRemaining(c, viewTime),
+      distanceMi: userLocation
+        ? haversineMiles(userLocation.lat, userLocation.lng, c.lat, c.lng)
+        : null,
     }));
-  }, [courtData, viewTime]);
+  }, [courtData, viewTime, userLocation]);
 
   // "Open now" = drop-in basketball is happening right now.
   const visibleCourts = useMemo(() => {
@@ -429,6 +447,10 @@ export default function App() {
             <Text style={styles.recenterIcon}>◎</Text>
           </Pressable>
         )}
+
+        <Pressable style={styles.nearbyBtn} onPress={() => setNearbyOpen(true)}>
+          <Text style={styles.nearbyBtnText}>📍 Nearby</Text>
+        </Pressable>
       </View>
 
       {selected && (
@@ -457,6 +479,18 @@ export default function App() {
           courts={courtData}
         />
       )}
+
+      <NearbyList
+        visible={nearbyOpen}
+        courts={visibleCourts}
+        hasLocation={!!userLocation}
+        onSelect={(id) => {
+          setNearbyOpen(false);
+          handleSelect(id);
+        }}
+        onRequestLocation={requestLocation}
+        onClose={() => setNearbyOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -602,6 +636,17 @@ function CourtDetail({
           <Text style={styles.badgeText}>Facility {status.open ? 'open' : 'closed'}</Text>
         </View>
       </View>
+
+      {(court.distanceMi != null || (bball.open && court.remaining > 0)) && (
+        <Text style={styles.metaLine}>
+          {[
+            court.distanceMi != null ? `📍 ${formatDistance(court.distanceMi)} away` : null,
+            bball.open && court.remaining > 0 ? `⏳ ${fmtDuration(court.remaining)} left` : null,
+          ]
+            .filter(Boolean)
+            .join('  ·  ')}
+        </Text>
+      )}
 
       {isPicked ? (
         <View style={styles.futureBox}>
@@ -940,6 +985,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 1000,
   },
   locatingText: { color: '#fff', fontSize: 13 },
 
@@ -958,8 +1004,28 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
+    zIndex: 1000,
   },
   recenterIcon: { fontSize: 22, color: '#2f74d6' },
+
+  nearbyBtn: {
+    position: 'absolute',
+    left: 14,
+    bottom: 14,
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+    zIndex: 1000,
+  },
+  nearbyBtnText: { fontSize: 14, color: '#2f74d6', fontWeight: '800' },
 
   card: {
     position: 'absolute',
@@ -982,7 +1048,8 @@ const styles = StyleSheet.create({
   cardSub: { fontSize: 13, color: '#5b6b7b', marginTop: 2 },
   close: { fontSize: 18, color: '#90a0b0', paddingLeft: 8 },
 
-  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 10 },
+  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 6 },
+  metaLine: { fontSize: 13, color: '#46586a', fontWeight: '600', marginBottom: 8 },
   badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   badgeOpen: { backgroundColor: '#d4f3df' },
   badgeClosed: { backgroundColor: '#f3d9d9' },

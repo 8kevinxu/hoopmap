@@ -45,6 +45,8 @@ stays centered on San Francisco — everything else still works.
 | `lib/signals.js` | "Down to hoop" signals + joinable sessions (friends-only, realtime) |
 | `components/SignalModal.js` | "Down to hoop" composer (now / at a time + note) |
 | `components/SessionModal.js` | Session sheet (join, suggest a time, host confirms) |
+| `lib/distance.js` | Haversine distance + formatting (miles) |
+| `components/NearbyList.js` | Nearby courts ranked by distance, with a min-open filter |
 
 ## Court data (SF Rec & Parks indoor gyms)
 
@@ -186,6 +188,21 @@ Both are pragmatic backstops, not airtight: the anonymous model means shared
 Wi-Fi / mobile CGNAT users share an IP. True per-user protection would need
 auth or device attestation.
 
+## Nearby courts
+
+The map's **📍 Nearby** button opens a list of courts **ranked by distance** from
+you (straight-line miles via `lib/distance.js` — no routing API). Each row shows
+distance and, for open courts, **how much open-gym time is left** ("open · 1h 20m
+left", or a red "closing · 15m left" under 30 min) so you don't trek to a gym
+that's about to close. An **Open for** filter (**Any / 30m+ / 1h+**) drops courts
+with too little time left.
+
+The list reuses the app's current **Open now/then** filter and time picker, so it
+respects the selected view time — e.g. nearest court open for 1h+ at Tue 3 PM.
+Distance + time-left also show on each court's detail card. Without location
+permission the list stays in default order with an "Enable location" prompt. Code:
+`components/NearbyList.js` (+ `getBasketballRemaining` in `lib/hours.js`).
+
 ## Accounts (optional)
 
 Accounts are the foundation for social features. They're **optional** — the map,
@@ -271,6 +288,5 @@ section, and the small **sessions can carry a place** column add at the bottom o
 - **Push notifications:** `expo-notifications` so runs / signals reach people who
   don't have the app open (needs a dev build). Turns the in-app feed into real pings.
 - **Invite links:** wrap a friend code in a deep link to add with one tap.
-- **Distance sort:** rank courts by distance from the user.
 - **Outdoor courts / more sports:** the data model has room (`indoor`, `source`
   fields) to bring back outdoor courts or add other sports later.
