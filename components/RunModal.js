@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { createRun, MAX_NOTE } from '../lib/runs';
 import { startOfDay, dayChipLabel, fmtClock } from '../lib/datetime';
+import { basketballWeekdays, openGymSlots } from '../lib/hours';
 
 export default function RunModal({ visible, court, defaultTime, onClose, onCreated }) {
   const days = useMemo(() => {
@@ -24,30 +25,16 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
       return d;
     });
   }, []);
-  // Weekdays this court actually has open-gym basketball — others are disabled.
-  const bballDays = useMemo(() => {
-    const set = new Set();
-    (court?.basketball || []).forEach((blocks, d) => {
-      if (blocks && blocks.length) set.add(d);
-    });
-    return set;
-  }, [court]);
+  // Weekdays this court has open-gym basketball — others are disabled; times are
+  // limited to the open-gym blocks so a run can't be planned while it's closed.
+  const bballDays = useMemo(() => basketballWeekdays(court), [court]);
   const firstOpenDay = useMemo(
     () => days.find((d) => bballDays.has(d.getDay())) || days[0],
     [days, bballDays]
   );
-
-  // A court's open-gym blocks for a weekday, and the 30-min start slots within
-  // them — so a run can only be planned while the gym runs open basketball.
   const blocksFor = (weekday) => court?.basketball?.[weekday] || [];
-  const slotsForDay = (dateObj) => {
-    if (!dateObj) return [];
-    const set = new Set();
-    for (const [s, e] of blocksFor(dateObj.getDay())) {
-      for (let m = s; m < e; m += 30) set.add(m);
-    }
-    return [...set].sort((a, b) => a - b);
-  };
+  const slotsForDay = (dateObj) =>
+    dateObj ? openGymSlots(court, dateObj.getDay()) : [];
 
   const [picked, setPicked] = useState(null);
   const [note, setNote] = useState('');

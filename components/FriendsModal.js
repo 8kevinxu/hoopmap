@@ -20,12 +20,13 @@ import {
   acceptRequest,
   removeFriendship,
 } from '../lib/friends';
-import { loadSignals, cancelSignal, subscribeSignals } from '../lib/signals';
+import { loadSignals, subscribeSignals } from '../lib/signals';
 import { loadUpcomingRuns, joinRun, leaveRun, formatRunTime } from '../lib/runs';
 import { viewLabel } from '../lib/datetime';
 import SignalModal from './SignalModal';
+import SessionModal from './SessionModal';
 
-export default function FriendsModal({ visible, onClose, courtsById = {} }) {
+export default function FriendsModal({ visible, onClose, courtsById = {}, courts = [] }) {
   const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
   const [incoming, setIncoming] = useState([]);
@@ -33,6 +34,7 @@ export default function FriendsModal({ visible, onClose, courtsById = {} }) {
   const [runs, setRuns] = useState([]);
   const [runBusy, setRunBusy] = useState(null);
   const [signalOpen, setSignalOpen] = useState(false);
+  const [selectedSignal, setSelectedSignal] = useState(null); // signal id for the session sheet
   const [loading, setLoading] = useState(true);
   const [addInput, setAddInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -95,12 +97,12 @@ export default function FriendsModal({ visible, onClose, courtsById = {} }) {
     await refresh();
     setBusy(false);
   };
-  const onCancelSignal = async (id) => {
-    setBusy(true);
-    await cancelSignal(id);
-    await refresh();
-    setBusy(false);
-  };
+  // The signal whose session sheet is open; close it if it disappears.
+  const selectedSignalObj = signals.find((s) => s.id === selectedSignal) || null;
+  useEffect(() => {
+    if (selectedSignal && !selectedSignalObj) setSelectedSignal(null);
+  }, [selectedSignal, selectedSignalObj]);
+
   const onToggleRun = async (run) => {
     setRunBusy(run.id);
     if (run.joined) await leaveRun(run.id);
@@ -150,22 +152,33 @@ export default function FriendsModal({ visible, onClose, courtsById = {} }) {
                 </Text>
               ) : (
                 signals.map((s) => (
-                  <View key={s.id} style={styles.row}>
+                  <Pressable
+                    key={s.id}
+                    style={styles.row}
+                    onPress={() => setSelectedSignal(s.id)}
+                  >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.rowName}>
                         {s.mine ? 'You' : `👤 ${s.name}`} ·{' '}
                         <Text style={styles.when}>
-                          {s.isNow ? 'right now' : viewLabel(s.startsAt)}
+                          {s.plannedAt
+                            ? `${viewLabel(s.plannedAt)}${
+                                s.plannedCourtId
+                                  ? ` @ ${courtsById[s.plannedCourtId] || 'court'}`
+                                  : ''
+                              }`
+                            : s.isNow
+                            ? 'now'
+                            : viewLabel(s.startsAt)}
                         </Text>
                       </Text>
-                      {!!s.note && <Text style={styles.signalNote}>{s.note}</Text>}
+                      <Text style={styles.signalNote}>
+                        {s.count} in{s.note ? ` · ${s.note}` : ''}
+                        {s.plannedAt ? '' : ' · tap to plan'}
+                      </Text>
                     </View>
-                    {s.mine && (
-                      <Pressable hitSlop={8} disabled={busy} onPress={() => onCancelSignal(s.id)}>
-                        <Text style={styles.removeText}>Cancel</Text>
-                      </Pressable>
-                    )}
-                  </View>
+                    <Text style={styles.chevron}>›</Text>
+                  </Pressable>
                 ))
               )}
 
@@ -301,6 +314,13 @@ export default function FriendsModal({ visible, onClose, courtsById = {} }) {
             onClose={() => setSignalOpen(false)}
             onPosted={refresh}
           />
+          <SessionModal
+            visible={!!selectedSignalObj}
+            signal={selectedSignalObj}
+            courts={courts}
+            onClose={() => setSelectedSignal(null)}
+            onChanged={refresh}
+          />
         </Pressable>
       </Pressable>
     </Modal>
@@ -352,6 +372,7 @@ const styles = StyleSheet.create({
   dthBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   when: { color: '#1f9d55', fontWeight: '700' },
   signalNote: { fontSize: 13, color: '#5b6b7b', marginTop: 1 },
+  chevron: { fontSize: 22, color: '#c0ccd8', fontWeight: '700', paddingLeft: 8 },
 
   codeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   code: {

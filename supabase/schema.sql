@@ -467,3 +467,84 @@ create policy "friends can see friends-only runs"
         )
     )
   );
+
+-- ===========================================================================
+-- Social: joinable "down to hoop" sessions (run once, on top of the signals
+-- section above). Friends can join a signal, suggest a time, and the host
+-- confirms one (planned_at). Keeps signals location-less; runs stay court-anchored.
+-- ===========================================================================
+
+-- The host-confirmed time for the session (null until the host confirms one).
+alter table public.hoop_signals add column if not exists planned_at timestamptz;
+
+create table if not exists public.hoop_signal_participants (
+  signal_id   uuid        not null references public.hoop_signals (id) on delete cascade,
+  user_id     uuid        not null references public.profiles (id) on delete cascade,
+  proposed_at timestamptz,                                   -- optional "I suggest this time"
+  created_at  timestamptz not null default now(),
+  primary key (signal_id, user_id)
+);
+
+alter table public.hoop_signal_participants enable row level security;
+
+-- You can see participants of any signal you're allowed to see (RLS on
+-- hoop_signals applies inside this subquery, so it's friend-scoped).
+create policy "see participants of visible signals"
+  on public.hoop_signal_participants for select
+  using (exists (select 1 from public.hoop_signals s where s.id = signal_id));
+
+create policy "join visible signals as yourself"
+  on public.hoop_signal_participants for insert
+  with check (
+    user_id = auth.uid()
+    and exists (select 1 from public.hoop_signals s where s.id = signal_id)
+  );
+
+create policy "update your own participation"
+  on public.hoop_signal_participants for update using (user_id = auth.uid());
+
+create policy "leave (delete your own row)"
+  on public.hoop_signal_participants for delete using (user_id = auth.uid());
+
+-- Host can confirm/clear the session time (set planned_at / expires_at).
+create policy "host can update their signal"
+  on public.hoop_signals for update using (user_id = auth.uid());
+
+-- Auto-add the poster as a participant when a signal is created.
+create or replace function public.add_poster_as_participant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.hoop_signal_participants (signal_id, user_id)
+  values (new.id, new.user_id)
+  on conflict do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists hoop_signals_add_poster_trg on public.hoop_signals;
+create trigger hoop_signals_add_poster_trg
+  after insert on public.hoop_signals
+  for each row execute function public.add_poster_as_participant();
+
+-- Real-time for the participant table (signals already published).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'hoop_signal_participants'
+  ) then
+    alter publication supabase_realtime add table public.hoop_signal_participants;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Sessions can carry a place: a suggested court per participant, and the
+-- host-confirmed court alongside planned_at. (Run once, on top of the joinable
+-- sessions section.) court_id values match data/courts.js ids, like hoop_runs.
+-- ---------------------------------------------------------------------------
+alter table public.hoop_signals add column if not exists planned_court_id text;
+alter table public.hoop_signal_participants add column if not exists proposed_court_id text;

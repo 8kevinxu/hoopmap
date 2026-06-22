@@ -42,8 +42,9 @@ stays centered on San Francisco — everything else still works.
 | `components/RunModal.js` | "Plan a run" form (day/time + note) |
 | `lib/friends.js` | Friends graph (codes, add/accept/remove) |
 | `components/FriendsModal.js` | Friends sheet (your code, add by code, requests, signals) |
-| `lib/signals.js` | "Down to hoop" availability signals (friends-only, realtime) |
+| `lib/signals.js` | "Down to hoop" signals + joinable sessions (friends-only, realtime) |
 | `components/SignalModal.js` | "Down to hoop" composer (now / at a time + note) |
+| `components/SessionModal.js` | Session sheet (join, suggest a time, host confirms) |
 
 ## Court data (SF Rec & Parks indoor gyms)
 
@@ -247,10 +248,19 @@ A location-less availability ping to friends: in the **👥 Friends** sheet tap
 **🏀 I'm down** → **Right now** or **At a time** (+ optional note). Friends see it
 live in their "Down to hoop" feed, and the Friends button shows a **badge** with
 the count of friends currently down — the in-app "notification". Signals are
-**friends-only** (RLS) and **auto-expire** 2h after they start. Code lives in
-`lib/signals.js` + `components/SignalModal.js`.
+**friends-only** (RLS) and **auto-expire** 2h after they start.
 
-Setup: run the **"down to hoop" signals** section of
+Each signal is a **joinable session**: tap it to open the session sheet, **join**
+(**I'm in**), **suggest a court + time**, and — as the host — **confirm** one
+(either a participant's suggestion or your own). Suggestions pick a **rec center**
+and a time **limited to that court's open-gym blocks** (shared with the run form
+via `basketballWeekdays` / `openGymSlots` in `lib/hours.js`). The confirmed
+court + time show to everyone and extend the session's expiry. Code lives in
+`lib/signals.js`, `components/SignalModal.js` (composer), and
+`components/SessionModal.js` (session).
+
+Setup: run the **"down to hoop" signals** section, the **joinable sessions**
+section, and the small **sessions can carry a place** column add at the bottom of
 [`supabase/schema.sql`](supabase/schema.sql) once.
 
 > **Note:** this is in-app/real-time only. True push (buzz the phone when the app

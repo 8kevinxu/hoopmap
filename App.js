@@ -454,6 +454,7 @@ export default function App() {
           visible={friendsOpen}
           onClose={() => setFriendsOpen(false)}
           courtsById={courtsById}
+          courts={courtData}
         />
       )}
     </SafeAreaView>
