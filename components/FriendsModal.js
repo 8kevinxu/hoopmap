@@ -21,7 +21,7 @@ import {
   removeFriendship,
 } from '../lib/friends';
 import { loadSignals, subscribeSignals } from '../lib/signals';
-import { loadUpcomingRuns, joinRun, leaveRun, formatRunTime } from '../lib/runs';
+import { loadUpcomingRuns, joinRun, leaveRun, cancelRun, formatRunTime } from '../lib/runs';
 import { viewLabel } from '../lib/datetime';
 import SignalModal from './SignalModal';
 import SessionModal from './SessionModal';
@@ -105,7 +105,8 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
 
   const onToggleRun = async (run) => {
     setRunBusy(run.id);
-    if (run.joined) await leaveRun(run.id);
+    if (run.mine) await cancelRun(run.id);
+    else if (run.joined) await leaveRun(run.id);
     else await joinRun(run.id);
     await refresh();
     setRunBusy(null);
@@ -186,7 +187,7 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
               <Text style={[styles.label, styles.sectionGap]}>Upcoming runs</Text>
               {runs.length === 0 ? (
                 <Text style={styles.muted}>
-                  No upcoming runs — plan one from a court on the map.
+                  No upcoming runs — tap ＋ Plan a run to start one.
                 </Text>
               ) : (
                 runs.map((run) => (
@@ -200,17 +201,24 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
                         {run.count} going{run.note ? ` · ${run.note}` : ''}
                       </Text>
                     </View>
-                    {!run.mine && (
-                      <Pressable
-                        style={[styles.smallBtn, run.joined ? styles.declineBtn : styles.acceptBtn]}
-                        disabled={runBusy === run.id}
-                        onPress={() => onToggleRun(run)}
-                      >
-                        <Text style={run.joined ? styles.declineText : styles.acceptText}>
-                          {runBusy === run.id ? '…' : run.joined ? 'Leave' : 'I’m in'}
-                        </Text>
-                      </Pressable>
-                    )}
+                    <Pressable
+                      style={[
+                        styles.smallBtn,
+                        run.mine || run.joined ? styles.declineBtn : styles.acceptBtn,
+                      ]}
+                      disabled={runBusy === run.id}
+                      onPress={() => onToggleRun(run)}
+                    >
+                      <Text style={run.mine || run.joined ? styles.declineText : styles.acceptText}>
+                        {runBusy === run.id
+                          ? '…'
+                          : run.mine
+                          ? 'Cancel'
+                          : run.joined
+                          ? 'Leave'
+                          : 'I’m in'}
+                      </Text>
+                    </Pressable>
                   </View>
                 ))
               )}

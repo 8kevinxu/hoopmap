@@ -40,7 +40,7 @@ stays centered on San Francisco — everything else still works.
 | `lib/auth.js` | Account state (Supabase Auth: session, profile, sign in/out) |
 | `lib/runs.js` | "Plan a run" store (create/join/leave/cancel pickup runs) |
 | `components/AuthModal.js` | Sign in / create account / account sheet |
-| `components/RunModal.js` | "Plan a run" form (day/time + note) |
+| `components/RunModal.js` | Top-level "Plan a run" form — pick a court + day/time in either order |
 | `lib/friends.js` | Friends graph (codes, add/accept/remove) |
 | `components/FriendsModal.js` | Friends sheet (your code, add by code, requests, signals) |
 | `lib/signals.js` | "Down to hoop" signals + joinable sessions (friends-only, realtime) |
@@ -230,11 +230,14 @@ When Supabase isn't configured, the account button is simply hidden.
 
 ## Pickup runs ("plan a run")
 
-Signed-in users can **plan a run** at a court: open a court → expand details →
-**Pickup runs** → **＋ Plan a run**, pick a day/time (limited to that court's
-open-gym days, reusing the map's time picker), choose **who can see it**
-(**Friends**, the default, or **Anyone**), and an optional note. Others who can
-see it tap **I'm in** to join; the host sees a roster count and can **Cancel**.
+Signed-in users **plan a run** from the **＋ Plan a run** button next to the
+map's time picker (no longer buried in each court's card). The form lets you
+start from **either end**: pick a **court** and its open-gym days/times light up,
+or pick a **day/time** and the court list flags which gyms run open gym then
+(others are disabled). Choose **who can see it** (**Friends**, the default, or
+**Anyone**) and an optional note. If the map's time picker is set, the form opens
+seeded to that time. Others who can see the run tap **I'm in** to join (from the
+Friends **Upcoming runs** feed); the host sees a roster count and can **Cancel**.
 Code lives in `lib/runs.js` + `components/RunModal.js`.
 
 Visibility is enforced by RLS via the `visibility` column (`public` | `friends`):

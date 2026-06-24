@@ -1,6 +1,7 @@
-// "Plan a run" form: pick a day + time (limited to the court's open-gym days),
-// an optional note, and post it. Reuses the same chip pattern as the map's
-// time picker, and the shared date helpers in lib/datetime.
+// "Plan a run": pick a court and a day+time, in either order. Choosing a court
+// limits the time chips to that court's open-gym blocks; picking a time first
+// flags which courts run open gym then (others are disabled). Reuses the map's
+// time-picker chips and the shared date helpers in lib/datetime.
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +17,13 @@ import { createRun, MAX_NOTE } from '../lib/runs';
 import { startOfDay, dayChipLabel, fmtClock } from '../lib/datetime';
 import { basketballWeekdays, openGymSlots } from '../lib/hours';
 
-export default function RunModal({ visible, court, defaultTime, onClose, onCreated }) {
+const minutesOf = (d) => d.getHours() * 60 + d.getMinutes();
+// Does this court run open-gym basketball at the exact picked day+time? Slots are
+// 30-min aligned, same as the time chips, so this is an exact membership check.
+const courtOpenAt = (court, when) =>
+  !when || openGymSlots(court, when.getDay()).includes(minutesOf(when));
+
+export default function RunModal({ visible, courts = [], defaultTime, onClose, onCreated }) {
   const days = useMemo(() => {
     const base = startOfDay(new Date());
     return Array.from({ length: 7 }, (_, i) => {
@@ -25,51 +32,60 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
       return d;
     });
   }, []);
-  // Weekdays this court has open-gym basketball — others are disabled; times are
-  // limited to the open-gym blocks so a run can't be planned while it's closed.
-  const bballDays = useMemo(() => basketballWeekdays(court), [court]);
-  const firstOpenDay = useMemo(
-    () => days.find((d) => bballDays.has(d.getDay())) || days[0],
-    [days, bballDays]
-  );
-  const blocksFor = (weekday) => court?.basketball?.[weekday] || [];
-  const slotsForDay = (dateObj) =>
-    dateObj ? openGymSlots(court, dateObj.getDay()) : [];
 
+  const [courtId, setCourtId] = useState(null);
   const [picked, setPicked] = useState(null);
   const [note, setNote] = useState('');
   const [visibility, setVisibility] = useState('friends');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  // (Re)initialize the selection each time the sheet opens: prefer the run-time
-  // picker's day if it has open gym, else the first open day; snap to a valid slot.
+  const court = useMemo(
+    () => courts.find((c) => c.id === courtId) || null,
+    [courts, courtId]
+  );
+  // Day/time options are constrained to the chosen court, or to all courts when
+  // none is chosen yet (so you can pick a time first, then a court open then).
+  const candidates = useMemo(() => (court ? [court] : courts), [court, courts]);
+  const daysWithHoops = useMemo(() => {
+    const set = new Set();
+    for (const c of candidates) for (const wd of basketballWeekdays(c)) set.add(wd);
+    return set;
+  }, [candidates]);
+  const slotsForDay = (when) => {
+    if (!when) return [];
+    const wd = when.getDay();
+    const set = new Set();
+    for (const c of candidates) for (const m of openGymSlots(c, wd)) set.add(m);
+    return [...set].sort((a, b) => a - b);
+  };
+  const firstOpenDay = useMemo(
+    () => days.find((d) => daysWithHoops.has(d.getDay())) || null,
+    [days, daysWithHoops]
+  );
+
+  // (Re)initialize each time the sheet opens: seed the time from the map's picker
+  // if one's active (the "time first" path), and start with no court chosen so
+  // the court list is open for browsing.
   useEffect(() => {
     if (!visible) return;
     setError(null);
     setNote('');
     setVisibility('friends');
     setBusy(false);
-    const dt = defaultTime ? new Date(defaultTime) : null;
-    const baseDay = dt && blocksFor(dt.getDay()).length ? startOfDay(dt) : firstOpenDay;
-    const slots = slotsForDay(baseDay);
-    if (!slots.length) {
-      setPicked(null);
-      return;
-    }
-    const wanted = dt ? dt.getHours() * 60 + dt.getMinutes() : null;
-    const min = wanted != null && slots.includes(wanted) ? wanted : slots[0];
-    const d = new Date(baseDay);
-    d.setHours(Math.floor(min / 60), min % 60, 0, 0);
-    setPicked(d);
+    setCourtId(null);
+    setPicked(defaultTime ? new Date(defaultTime) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const selDayTs = picked ? startOfDay(picked).getTime() : null;
-  const selMin = picked ? picked.getHours() * 60 + picked.getMinutes() : null;
-  const selDay = picked ? startOfDay(picked) : null;
+  const selDay = picked ? startOfDay(picked) : firstOpenDay;
+  const selDayTs = selDay ? selDay.getTime() : null;
+  const selMin = picked ? minutesOf(picked) : null;
   const daySlots = slotsForDay(selDay);
-  const pick = (dayDate, min) => {
+  const blocksForSelDay =
+    court && selDay ? court.basketball?.[selDay.getDay()] || [] : [];
+
+  const pickAt = (dayDate, min) => {
     const d = new Date(dayDate);
     d.setHours(Math.floor(min / 60), min % 60, 0, 0);
     setPicked(d);
@@ -79,10 +95,42 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
     const slots = slotsForDay(d);
     if (!slots.length) return;
     const min = selMin != null && slots.includes(selMin) ? selMin : slots[0];
-    pick(d, min);
+    pickAt(d, min);
   };
 
+  // Selecting a court keeps the chosen time if the court runs open gym then,
+  // otherwise snaps to that court's nearest slot. Tapping it again deselects
+  // (back to "all courts" so the time options widen again).
+  const chooseCourt = (c) => {
+    if (c.id === courtId) {
+      setCourtId(null);
+      return;
+    }
+    setCourtId(c.id);
+    if (!picked || courtOpenAt(c, picked)) return;
+    const sameDay = openGymSlots(c, picked.getDay());
+    if (sameDay.length) {
+      pickAt(startOfDay(picked), sameDay[0]);
+      return;
+    }
+    const d = days.find((dd) => openGymSlots(c, dd.getDay()).length);
+    if (d) pickAt(d, openGymSlots(c, d.getDay())[0]);
+    else setPicked(null);
+  };
+
+  // Court rows: once a time is picked, courts open then float to the top and the
+  // rest are disabled; with no time yet, every court is selectable.
+  const courtRows = useMemo(() => {
+    const rows = courts.map((c) => ({ c, open: courtOpenAt(c, picked) }));
+    if (!picked) return rows;
+    return rows.sort((a, b) => (a.open === b.open ? 0 : a.open ? -1 : 1));
+  }, [courts, picked]);
+
   const submit = async () => {
+    if (!courtId) {
+      setError('Pick a court.');
+      return;
+    }
     if (!picked) {
       setError('Pick a day and time.');
       return;
@@ -90,7 +138,7 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
     setBusy(true);
     setError(null);
     const { error } = await createRun({
-      courtId: court.id,
+      courtId,
       startsAt: picked.toISOString(),
       note,
       visibility,
@@ -104,8 +152,6 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
     onClose();
   };
 
-  if (!court) return null;
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
@@ -116,7 +162,55 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
               <Text style={styles.close}>✕</Text>
             </Pressable>
           </View>
-          <Text style={styles.courtName}>{court.name}</Text>
+
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Court</Text>
+            {picked && (
+              <Text style={styles.labelHint}>
+                open gym {dayChipLabel(picked)} {fmtClock(Math.floor(selMin / 60), selMin % 60)}
+              </Text>
+            )}
+          </View>
+          <ScrollView style={styles.courtList} nestedScrollEnabled>
+            {courtRows.map(({ c, open }) => {
+              const active = c.id === courtId;
+              const disabled = !!picked && !open;
+              return (
+                <Pressable
+                  key={c.id}
+                  disabled={disabled}
+                  onPress={() => chooseCourt(c)}
+                  style={[
+                    styles.courtRow,
+                    active && styles.courtRowActive,
+                    disabled && styles.courtRowDisabled,
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.courtRowName, active && styles.courtRowNameActive]}
+                      numberOfLines={1}
+                    >
+                      {c.name}
+                    </Text>
+                    {!!c.neighborhood && (
+                      <Text
+                        style={[styles.courtRowSub, active && styles.courtRowSubActive]}
+                        numberOfLines={1}
+                      >
+                        {c.neighborhood}
+                      </Text>
+                    )}
+                  </View>
+                  {active ? (
+                    <Text style={styles.courtRowCheck}>✓</Text>
+                  ) : disabled ? (
+                    <Text style={styles.courtRowClosed}>no hoops then</Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
           <Text style={styles.label}>Day</Text>
           <ScrollView
@@ -125,8 +219,8 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
             contentContainerStyle={styles.chipRow}
           >
             {days.map((d) => {
-              const open = bballDays.has(d.getDay());
-              const active = d.getTime() === selDayTs;
+              const open = daysWithHoops.has(d.getDay());
+              const active = d.getTime() === selDayTs && !!picked;
               return (
                 <Pressable
                   key={d.getTime()}
@@ -154,10 +248,10 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
           </ScrollView>
 
           <Text style={styles.label}>Time</Text>
-          {!!selDay && blocksFor(selDay.getDay()).length > 0 && (
+          {blocksForSelDay.length > 0 && (
             <Text style={styles.hint}>
               Open gym:{' '}
-              {blocksFor(selDay.getDay())
+              {blocksForSelDay
                 .map(
                   ([s, e]) =>
                     `${fmtClock(Math.floor(s / 60), s % 60)}–${fmtClock(
@@ -181,7 +275,7 @@ export default function RunModal({ visible, court, defaultTime, onClose, onCreat
                 return (
                   <Pressable
                     key={m}
-                    onPress={() => pick(selDay || firstOpenDay, m)}
+                    onPress={() => pickAt(selDay, m)}
                     style={[styles.chip, active && styles.chipActive]}
                   >
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
@@ -272,18 +366,47 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '800', color: '#0d1b2a' },
   close: { fontSize: 18, color: '#90a0b0' },
-  courtName: { fontSize: 14, color: '#5b6b7b', marginTop: 2, marginBottom: 12 },
 
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
   label: {
     fontSize: 12,
     fontWeight: '800',
     color: '#0d1b2a',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 6,
+    marginTop: 12,
     marginBottom: 6,
   },
+  labelHint: { fontSize: 12, color: '#2f74d6', fontWeight: '700', marginTop: 12 },
   hint: { fontSize: 12, color: '#5b6b7b', marginBottom: 8, fontStyle: 'italic' },
+
+  courtList: {
+    maxHeight: 188,
+    borderWidth: 1,
+    borderColor: '#e3e8ee',
+    borderRadius: 12,
+  },
+  courtRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef1f4',
+  },
+  courtRowActive: { backgroundColor: '#2f74d6' },
+  courtRowDisabled: { opacity: 0.45 },
+  courtRowName: { fontSize: 14, fontWeight: '700', color: '#0d1b2a' },
+  courtRowNameActive: { color: '#fff' },
+  courtRowSub: { fontSize: 12, color: '#7c8a98', marginTop: 1 },
+  courtRowSubActive: { color: '#d6e4f5' },
+  courtRowCheck: { fontSize: 16, fontWeight: '800', color: '#fff', marginLeft: 8 },
+  courtRowClosed: { fontSize: 11, color: '#aab4bd', fontStyle: 'italic', marginLeft: 8 },
+
   toggle: {
     flexDirection: 'row',
     backgroundColor: '#eef1f4',
