@@ -269,7 +269,14 @@ export default function RunModal({
             })}
           </ScrollView>
 
-          <Text style={styles.label}>Time</Text>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Time</Text>
+            {!!picked && (
+              <Pressable hitSlop={8} onPress={() => setPicked(null)}>
+                <Text style={styles.clearTime}>✕ Clear</Text>
+              </Pressable>
+            )}
+          </View>
           {blocksForSelDay.length > 0 && (
             <Text style={styles.hint}>
               Open gym:{' '}
@@ -404,6 +411,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   labelHint: { fontSize: 12, color: '#2f74d6', fontWeight: '700', marginTop: 12 },
+  clearTime: { fontSize: 12, color: '#c0392b', fontWeight: '700', marginTop: 12 },
   hint: { fontSize: 12, color: '#5b6b7b', marginBottom: 8, fontStyle: 'italic' },
 
   courtList: {
