@@ -16,12 +16,16 @@ import CourtMap from './components/CourtMap';
 import AuthModal from './components/AuthModal';
 import RunModal from './components/RunModal';
 import FriendsModal from './components/FriendsModal';
+import FeedModal from './components/FeedModal';
 import NearbyList from './components/NearbyList';
 import { useAuth } from './lib/auth';
 import { useCourts } from './lib/useCourts';
 import { fmtClock, startOfDay, viewLabel, dayChipLabel, fmtDuration } from './lib/datetime';
 import { haversineMiles, formatDistance } from './lib/distance';
-import { loadSignals, subscribeSignals } from './lib/signals';
+import { subscribeSignals } from './lib/signals';
+import { subscribeRuns } from './lib/runs';
+import { loadFeed, getFeedSeenAt, markFeedSeen, unreadCount } from './lib/feed';
+import { listIncomingRequests } from './lib/friends';
 import { registerForPush, onNotificationTap } from './lib/push';
 import {
   getOpenStatus,
@@ -76,9 +80,11 @@ export default function App() {
   const { enabled: authEnabled, user, displayName } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
   const [nearbyOpen, setNearbyOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
-  const [signalCount, setSignalCount] = useState(0); // active friend "down to hoop" signals
+  const [unread, setUnread] = useState(0); // unread activity-feed items (badge)
+  const [requestCount, setRequestCount] = useState(0); // incoming friend requests (badge)
 
   // Load check-ins + my votes on mount; (when shared) live-update by merging
   // new check-ins incrementally and refetching on deletes.
@@ -128,24 +134,56 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // Badge: live count of friends' active "down to hoop" signals (not your own).
+  // Activity badge: count of feed items (friends' signals + runs) newer than the
+  // last time the user opened the Activity sheet. Live-updates on signal changes.
+  const refreshUnread = useCallback(async () => {
+    if (!authEnabled || !user) {
+      setUnread(0);
+      return;
+    }
+    const [items, seenAt] = await Promise.all([loadFeed(), getFeedSeenAt()]);
+    setUnread(unreadCount(items, seenAt));
+  }, [authEnabled, user?.id]);
+
   useEffect(() => {
     if (!authEnabled || !user) {
-      setSignalCount(0);
+      setUnread(0);
+      return;
+    }
+    refreshUnread();
+    const unsubS = subscribeSignals(refreshUnread);
+    const unsubR = subscribeRuns(refreshUnread);
+    return () => {
+      unsubS();
+      unsubR();
+    };
+  }, [authEnabled, user?.id, refreshUnread]);
+
+  // Friends badge: number of pending incoming requests. Re-checked whenever the
+  // Friends sheet opens or closes (where accepts/declines happen).
+  useEffect(() => {
+    if (!authEnabled || !user) {
+      setRequestCount(0);
       return;
     }
     let alive = true;
-    const refresh = () =>
-      loadSignals().then((list) => {
-        if (alive) setSignalCount(list.filter((s) => !s.mine).length);
-      });
-    refresh();
-    const unsub = subscribeSignals(refresh);
+    listIncomingRequests().then((r) => {
+      if (alive) setRequestCount(r.length);
+    });
     return () => {
       alive = false;
-      unsub();
     };
-  }, [authEnabled, user?.id]);
+  }, [authEnabled, user?.id, friendsOpen]);
+
+  // Opening/closing the Activity sheet marks the feed as seen and clears the badge.
+  const openFeed = useCallback(() => {
+    setFeedOpen(true);
+    markFeedSeen().then(() => setUnread(0));
+  }, []);
+  const closeFeed = useCallback(() => {
+    setFeedOpen(false);
+    markFeedSeen().then(() => setUnread(0));
+  }, []);
 
   // Register this device for push when signed in (no-ops on web/simulator/Expo
   // Go or without an EAS projectId). Sign-out unregisters via lib/auth.
@@ -154,14 +192,15 @@ export default function App() {
     registerForPush(user.id);
   }, [authEnabled, user?.id]);
 
-  // Tapping a push deep-links: run/run-join → open that court; signal/session/
-  // friend events → open the Friends sheet.
+  // Tapping a push deep-links: run/run-join → open that court; friend-accept →
+  // the Friends sheet; signals/sessions → the Activity feed.
   useEffect(() => {
     return onNotificationTap((data) => {
       if (data.courtId) setSelectedId(data.courtId);
-      else if (data.type) setFriendsOpen(true);
+      else if (data.type === 'friend') setFriendsOpen(true);
+      else if (data.type) openFeed();
     });
-  }, []);
+  }, [openFeed]);
 
   // Ask for location (on mount, and again if the user taps "enable location").
   const requestLocation = useCallback(async () => {
@@ -318,11 +357,21 @@ export default function App() {
         {authEnabled && (
           <View style={styles.headerBtns}>
             {user && (
+              <Pressable style={styles.account} onPress={openFeed}>
+                <Text style={styles.accountText}>📣 Activity</Text>
+                {unread > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unread}</Text>
+                  </View>
+                )}
+              </Pressable>
+            )}
+            {user && (
               <Pressable style={styles.account} onPress={() => setFriendsOpen(true)}>
                 <Text style={styles.accountText}>👥 Friends</Text>
-                {signalCount > 0 && (
+                {requestCount > 0 && (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{signalCount}</Text>
+                    <Text style={styles.badgeText}>{requestCount}</Text>
                   </View>
                 )}
               </Pressable>
@@ -490,12 +539,16 @@ export default function App() {
         <AuthModal visible={authOpen} onClose={() => setAuthOpen(false)} />
       )}
       {authEnabled && user && (
-        <FriendsModal
-          visible={friendsOpen}
-          onClose={() => setFriendsOpen(false)}
+        <FeedModal
+          visible={feedOpen}
+          onClose={closeFeed}
           courtsById={courtsById}
           courts={courtData}
+          userLocation={userLocation}
         />
+      )}
+      {authEnabled && user && (
+        <FriendsModal visible={friendsOpen} onClose={() => setFriendsOpen(false)} />
       )}
 
       <NearbyList
@@ -805,7 +858,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   headerText: { flex: 1 },
-  headerBtns: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  headerBtns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   account: {
     backgroundColor: '#1b2b3d',
     paddingHorizontal: 12,

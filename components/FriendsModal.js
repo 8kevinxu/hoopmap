@@ -1,5 +1,6 @@
 // Friends sheet: share your code, add friends by code, and accept/decline
-// incoming requests. Opened from the header when signed in.
+// incoming requests. Opened from the header when signed in. (The activity feed —
+// "down to hoop" signals and planned runs — lives in the Activity sheet now.)
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,39 +21,25 @@ import {
   acceptRequest,
   removeFriendship,
 } from '../lib/friends';
-import { loadSignals, subscribeSignals } from '../lib/signals';
-import { loadUpcomingRuns, joinRun, leaveRun, cancelRun, formatRunTime } from '../lib/runs';
-import { viewLabel } from '../lib/datetime';
-import SignalModal from './SignalModal';
-import SessionModal from './SessionModal';
 
-export default function FriendsModal({ visible, onClose, courtsById = {}, courts = [] }) {
+export default function FriendsModal({ visible, onClose }) {
   const [code, setCode] = useState(null);
   const [friends, setFriends] = useState([]);
   const [incoming, setIncoming] = useState([]);
-  const [signals, setSignals] = useState([]);
-  const [runs, setRuns] = useState([]);
-  const [runBusy, setRunBusy] = useState(null);
-  const [signalOpen, setSignalOpen] = useState(false);
-  const [selectedSignal, setSelectedSignal] = useState(null); // signal id for the session sheet
   const [loading, setLoading] = useState(true);
   const [addInput, setAddInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null); // { kind: 'ok' | 'err', text }
 
   const refresh = async () => {
-    const [c, f, i, s, r] = await Promise.all([
+    const [c, f, i] = await Promise.all([
       getMyCode(),
       listFriends(),
       listIncomingRequests(),
-      loadSignals(),
-      loadUpcomingRuns(),
     ]);
     setCode(c);
     setFriends(f);
     setIncoming(i);
-    setSignals(s);
-    setRuns(r);
   };
 
   useEffect(() => {
@@ -61,9 +48,6 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
     setMsg(null);
     setAddInput('');
     refresh().finally(() => setLoading(false));
-    // Live-update the "down to hoop" feed while the sheet is open.
-    const unsub = subscribeSignals(() => loadSignals().then(setSignals));
-    return unsub;
   }, [visible]);
 
   const onAdd = async () => {
@@ -97,20 +81,6 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
     await refresh();
     setBusy(false);
   };
-  // The signal whose session sheet is open; close it if it disappears.
-  const selectedSignalObj = signals.find((s) => s.id === selectedSignal) || null;
-  useEffect(() => {
-    if (selectedSignal && !selectedSignalObj) setSelectedSignal(null);
-  }, [selectedSignal, selectedSignalObj]);
-
-  const onToggleRun = async (run) => {
-    setRunBusy(run.id);
-    if (run.mine) await cancelRun(run.id);
-    else if (run.joined) await leaveRun(run.id);
-    else await joinRun(run.id);
-    await refresh();
-    setRunBusy(null);
-  };
 
   const shareCode = async () => {
     if (!code) return;
@@ -140,91 +110,8 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
             </View>
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled">
-              {/* Down to hoop feed */}
-              <View style={styles.feedHead}>
-                <Text style={styles.label}>Down to hoop</Text>
-                <Pressable style={styles.dthBtn} onPress={() => setSignalOpen(true)}>
-                  <Text style={styles.dthBtnText}>🏀 I’m down</Text>
-                </Pressable>
-              </View>
-              {signals.length === 0 ? (
-                <Text style={styles.muted}>
-                  No one’s down right now — tap “I’m down” to ping your friends.
-                </Text>
-              ) : (
-                signals.map((s) => (
-                  <Pressable
-                    key={s.id}
-                    style={styles.row}
-                    onPress={() => setSelectedSignal(s.id)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rowName}>
-                        {s.mine ? 'You' : `👤 ${s.name}`} ·{' '}
-                        <Text style={styles.when}>
-                          {s.plannedAt
-                            ? `${viewLabel(s.plannedAt)}${
-                                s.plannedCourtId
-                                  ? ` @ ${courtsById[s.plannedCourtId] || 'court'}`
-                                  : ''
-                              }`
-                            : s.isNow
-                            ? 'now'
-                            : viewLabel(s.startsAt)}
-                        </Text>
-                      </Text>
-                      <Text style={styles.signalNote}>
-                        {s.count} in{s.note ? ` · ${s.note}` : ''}
-                        {s.plannedAt ? '' : ' · tap to plan'}
-                      </Text>
-                    </View>
-                    <Text style={styles.chevron}>›</Text>
-                  </Pressable>
-                ))
-              )}
-
-              {/* Upcoming runs */}
-              <Text style={[styles.label, styles.sectionGap]}>Upcoming runs</Text>
-              {runs.length === 0 ? (
-                <Text style={styles.muted}>
-                  No upcoming runs — tap ＋ Plan a run to start one.
-                </Text>
-              ) : (
-                runs.map((run) => (
-                  <View key={run.id} style={styles.row}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rowName}>
-                        🏀 {courtsById[run.courtId] || 'A court'}
-                      </Text>
-                      <Text style={styles.signalNote}>
-                        {formatRunTime(run.startsAt)} · {run.mine ? 'You' : run.hostName} ·{' '}
-                        {run.count} going{run.note ? ` · ${run.note}` : ''}
-                      </Text>
-                    </View>
-                    <Pressable
-                      style={[
-                        styles.smallBtn,
-                        run.mine || run.joined ? styles.declineBtn : styles.acceptBtn,
-                      ]}
-                      disabled={runBusy === run.id}
-                      onPress={() => onToggleRun(run)}
-                    >
-                      <Text style={run.mine || run.joined ? styles.declineText : styles.acceptText}>
-                        {runBusy === run.id
-                          ? '…'
-                          : run.mine
-                          ? 'Cancel'
-                          : run.joined
-                          ? 'Leave'
-                          : 'I’m in'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                ))
-              )}
-
               {/* Your code */}
-              <Text style={[styles.label, styles.sectionGap]}>Your friend code</Text>
+              <Text style={styles.label}>Your friend code</Text>
               <View style={styles.codeRow}>
                 <Text selectable style={styles.code}>
                   {code || '—'}
@@ -316,19 +203,6 @@ export default function FriendsModal({ visible, onClose, courtsById = {}, courts
               )}
             </ScrollView>
           )}
-
-          <SignalModal
-            visible={signalOpen}
-            onClose={() => setSignalOpen(false)}
-            onPosted={refresh}
-          />
-          <SessionModal
-            visible={!!selectedSignalObj}
-            signal={selectedSignalObj}
-            courts={courts}
-            onClose={() => setSelectedSignal(null)}
-            onChanged={refresh}
-          />
         </Pressable>
       </Pressable>
     </Modal>
@@ -364,23 +238,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   sectionGap: { marginTop: 18 },
-
-  feedHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  dthBtn: {
-    backgroundColor: '#1f9d55',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  dthBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  when: { color: '#1f9d55', fontWeight: '700' },
-  signalNote: { fontSize: 13, color: '#5b6b7b', marginTop: 1 },
-  chevron: { fontSize: 22, color: '#c0ccd8', fontWeight: '700', paddingLeft: 8 },
 
   codeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   code: {

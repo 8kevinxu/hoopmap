@@ -42,7 +42,9 @@ stays centered on San Francisco — everything else still works.
 | `components/AuthModal.js` | Sign in / create account / account sheet |
 | `components/RunModal.js` | Top-level "Plan a run" form — pick a court + day/time in either order |
 | `lib/friends.js` | Friends graph (codes, add/accept/remove) |
-| `components/FriendsModal.js` | Friends sheet (your code, add by code, requests, signals) |
+| `components/FriendsModal.js` | Friends sheet (your code, add by code, requests, friends list) |
+| `lib/feed.js` | Activity feed: merges signals + runs into one stream; unread tracking |
+| `components/FeedModal.js` | Activity sheet — friends' signals + upcoming runs, with composers |
 | `lib/signals.js` | "Down to hoop" signals + joinable sessions (friends-only, realtime) |
 | `components/SignalModal.js` | "Down to hoop" composer (now / at a time + note) |
 | `components/SessionModal.js` | Session sheet (join, suggest a time, host confirms) |
@@ -229,6 +231,25 @@ Setup (on top of the Supabase steps under *Live crowd check-ins*):
 
 When Supabase isn't configured, the account button is simply hidden.
 
+## Activity feed
+
+The social front door. The header **📣 Activity** button opens one stream that
+merges everything happening with your friends — their **"down to hoop"** signals
+(tap to open the session), **confirmed sessions** (court + time locked in, marked
+✅), and **upcoming runs** (with **I'm in** / **Leave** / **Cancel**) — sorted
+soonest-first. Up top are quick **🏀 I'm down** and **＋ Plan a run** composers, so
+the feed is both where you see activity and where you start it.
+
+The Activity button carries an **unread badge**: a count of feed items posted
+since you last opened the sheet. "Last seen" is a single timestamp kept on the
+device (`AsyncStorage`), so the badge survives restarts and clears when you open
+(or close) the feed; your own posts never count. The feed live-updates while open
+via Supabase realtime on both the signal and run tables. Code lives in
+`lib/feed.js` (merge + unread) and `components/FeedModal.js`.
+
+The **👥 Friends** sheet is now just friend management (code, add, requests,
+list), and its badge counts pending **friend requests**.
+
 ## Pickup runs ("plan a run")
 
 Signed-in users **plan a run** from the **＋ Plan a run** button next to the
@@ -238,12 +259,12 @@ or pick a **day/time** and the court list flags which gyms run open gym then
 (others are disabled). Choose **who can see it** (**Friends**, the default, or
 **Anyone**) and an optional note. If the map's time picker is set, the form opens
 seeded to that time. Others who can see the run tap **I'm in** to join (from the
-Friends **Upcoming runs** feed); the host sees a roster count and can **Cancel**.
+**Activity** feed); the host sees a roster count and can **Cancel**.
 Code lives in `lib/runs.js` + `components/RunModal.js`.
 
 Visibility is enforced by RLS via the `visibility` column (`public` | `friends`):
 public runs are readable by all, friends-only runs only by the host and accepted
-friends (`loadUpcomingRuns` powers the Friends-sheet feed across all courts).
+friends (`loadUpcomingRuns` powers the Activity feed across all courts).
 Setup: run the **Social / "plan a run"** section of
 [`supabase/schema.sql`](supabase/schema.sql) and the later **Friends + runs**
 policy once — they add `hoop_runs` / `hoop_run_participants`, policies, real-time,
@@ -256,9 +277,8 @@ shows your code (with **Share**), an **add by code** box, incoming **requests**
 (accept/decline), and your **friends list**. Adding by code sends a request the
 other person accepts; if they'd already requested you, adding them completes it.
 Each profile gets a unique 6-char code (no ambiguous characters) via a DB trigger.
-The sheet also shows an **Upcoming runs** feed (friends' + your runs you can see,
-with Join) so runs are discoverable without tapping each court. Code lives in
-`lib/friends.js` + `components/FriendsModal.js`.
+(Friends' runs and signals show in the **📣 Activity** feed, not here.) Code lives
+in `lib/friends.js` + `components/FriendsModal.js`.
 
 Setup: run the **friends graph** section of [`supabase/schema.sql`](supabase/schema.sql)
 once — it adds the `friend_code` column (+ generator/backfill) and the
@@ -266,11 +286,11 @@ once — it adds the `friend_code` column (+ generator/backfill) and the
 
 ## Down to hoop
 
-A location-less availability ping to friends: in the **👥 Friends** sheet tap
+A location-less availability ping to friends: in the **📣 Activity** sheet tap
 **🏀 I'm down** → **Right now** or **At a time** (+ optional note). Friends see it
-live in their "Down to hoop" feed, and the Friends button shows a **badge** with
-the count of friends currently down — the in-app "notification". Signals are
-**friends-only** (RLS) and **auto-expire** 2h after they start.
+live in their Activity feed, and the Activity button shows an **unread badge** —
+the in-app "notification". Signals are **friends-only** (RLS) and **auto-expire**
+2h after they start.
 
 Each signal is a **joinable session**: tap it to open the session sheet, **join**
 (**I'm in**), **suggest a court + time**, and — as the host — **confirm** one
@@ -306,7 +326,8 @@ in a `device_tokens` table (`lib/push.js`). Postgres triggers on `hoop_signals`,
 `hoop_runs`, the participant tables, and `friendships` call a `send_push()`
 helper that POSTs to **Expo's push API straight from the database via `pg_net`**
 — no Edge Function or server to run. Tapping a push deep-links into the app (the
-court for a run, the Friends sheet for signals/sessions/friend events).
+court for a run, the Activity feed for signals/sessions, the Friends sheet for a
+friend accept).
 
 **Setup (one-time):**
 
@@ -320,6 +341,16 @@ court for a run, the Friends sheet for signals/sessions/friend events).
    [`supabase/schema.sql`](supabase/schema.sql) once. It enables `pg_net`, adds
    `device_tokens` (+ RLS) and the trigger functions. (`pg_net` may need enabling
    under **Database → Extensions** in the Supabase dashboard first.)
+
+**Testing status.** The **backend is verified end to end**: with `pg_net`,
+`device_tokens`, and the trigger functions applied, `send_push()` POSTs a
+well-formed request to Expo's push API and gets back a `200` (confirmed by
+seeding a token and inspecting `net._http_response`). **On-device delivery is
+not yet verified** — the iOS Simulator has no APNs and can't receive remote
+push, a free Apple developer account can't sign the Push Notifications
+capability (it needs the paid `$99/yr` Apple Developer Program), and no Android
+device was on hand. Verifying delivery to a screen just needs a physical Android
+device/emulator (free) or a paid Apple account.
 
 **Limitations (v1):** pushes are fire-and-forget — Expo delivery receipts aren't
 checked, and tokens aren't pruned when a device unregisters at the OS level
