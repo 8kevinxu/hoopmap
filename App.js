@@ -801,7 +801,8 @@ function CourtDetail({
 
         {!!court.notes && <Text style={styles.notes}>{court.notes}</Text>}
         <Text style={styles.disclaimer}>
-          Open-gym times (summer) vary seasonally — verify on sfrecpark.org.
+          {court.disclaimer ||
+            'Open-gym times (summer) vary seasonally — verify on sfrecpark.org.'}
         </Text>
 
         <Text style={[styles.sectionLabel, styles.reviewsLabel]}>Reviews</Text>

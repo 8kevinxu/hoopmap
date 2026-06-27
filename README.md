@@ -29,6 +29,7 @@ stays centered on San Francisco — everything else still works.
 | `assets/stephCurryIcon.js` | User-location marker image (data URI) |
 | `data/courts.js` | **Generated** bundled court list (offline fallback) |
 | `data/courts.json` | **Generated** hostable court data the app fetches at launch |
+| `data/manual-courts.js` | **Hand-curated** courts from non-sfrecpark sources; merged in at runtime, never regenerated |
 | `scripts/build-indoor-courts.js` | Builds the data files; scrapes live schedules |
 | `scripts/schedule-cache.json` | Last-good scraped schedule per facility (fallback) |
 | `.github/workflows/refresh-schedules.yml` | Weekly cron that re-scrapes + commits |
@@ -74,6 +75,16 @@ Regenerate anytime:
 ```bash
 npm run build:courts
 ```
+
+### Courts from other sources
+
+Not every gym is an SF Rec & Parks center. Courts from other sources (e.g. the
+San Bruno Recreation & Aquatic Center, whose drop-in hours come from a city
+Google Sheet) live in **`data/manual-courts.js`** — same schema, hand-authored.
+`lib/useCourts.js` merges them into whatever the SF pipeline produced (bundled,
+cached, or remote), deduped by `id`, so `npm run build:courts` never touches
+them. An optional `disclaimer` field overrides the default "verify on
+sfrecpark.org" footnote on the court detail screen.
 
 ### Auto-refresh (keeping schedules current)
 
