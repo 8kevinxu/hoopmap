@@ -94,8 +94,8 @@ by `id`, so `npm run build:courts` never touches them. Two flavors:
 - **Refreshable** courts get their own build script + generated file. The **San
   Bruno Recreation & Aquatic Center** is the first: `scripts/build-sanbruno-court.js`
   pulls the city's public *Gymnasium Schedule* Google Sheet (CSV export), parses the
-  two-side gym grid into drop-in basketball blocks, and writes
-  **`data/sanbruno-court.js`**. Run it with `npm run build:sanbruno`, or
+  two-side gym grid into per-sport drop-in blocks (basketball + volleyball), and
+  writes **`data/sanbruno-court.js`**. Run it with `npm run build:sanbruno`, or
   `npm run build:data` to rebuild SF + San Bruno together. It mirrors the SF build's
   resilience — last-good cache (`scripts/sanbruno-cache.json`) plus a validation gate
   that keeps the old data if the sheet won't parse.

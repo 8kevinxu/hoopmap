@@ -40,6 +40,14 @@ const MIN_DAYS_OK = 5;
 const time = (h, m = 0) => h * 60 + m;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Drop-in sports pulled from the gym grid (matched against each block's label).
+// Keep in sync with lib/sports.js. The build gates on basketball (below).
+const SPORTS = [
+  { id: 'basketball', match: /basketball/i },
+  { id: 'volleyball', match: /volleyball/i },
+];
+const emptyWeek = () => [[], [], [], [], [], [], []];
+
 // Static identity + facility hours (from sanbruno.ca.gov; not in the gym sheet).
 // schedule[] indexed 0=Sun..6=Sat: Mon–Fri 6a–9p, Sat 8a–8p, Sun 12p–5p.
 const SAN_BRUNO = {
@@ -154,8 +162,8 @@ function parseSchedule(csv) {
   }
   if (headerRow < 0) throw new Error('weekday header row not found');
 
-  const basketball = [[], [], [], [], [], [], []];
-  let daysWithBlocks = 0;
+  const dropins = Object.fromEntries(SPORTS.map((s) => [s.id, emptyWeek()]));
+  let bballDays = 0;
 
   for (let d = 0; d < 7; d++) {
     const col = rows[headerRow].findIndex((c) => new RegExp(DAY_NAMES[d], 'i').test(c));
@@ -164,18 +172,22 @@ function parseSchedule(csv) {
     const found = [
       ...blocksInColumn(rows, col, headerRow + 1),
       ...blocksInColumn(rows, col + 3, headerRow + 1),
-    ].filter((b) => /basketball/i.test(b.name) && !/setup/i.test(b.name));
-    const merged = mergeBlocks(found);
-    basketball[d] = merged;
-    if (merged.length) daysWithBlocks++;
+    ];
+    for (const s of SPORTS) {
+      // Setup/teardown rows ("Volleyball Setup") aren't play time — drop them.
+      const blocks = found.filter((b) => s.match.test(b.name) && !/setup/i.test(b.name));
+      dropins[s.id][d] = mergeBlocks(blocks);
+    }
+    if (dropins.basketball[d].length) bballDays++;
   }
 
-  if (daysWithBlocks < MIN_DAYS_OK) {
+  // Gate on basketball (broad coverage); volleyball is legitimately sparse.
+  if (bballDays < MIN_DAYS_OK) {
     throw new Error(
-      `only ${daysWithBlocks}/7 days parsed a basketball block (min ${MIN_DAYS_OK}) — sheet layout may have changed`
+      `only ${bballDays}/7 days parsed a basketball block (min ${MIN_DAYS_OK}) — sheet layout may have changed`
     );
   }
-  return basketball;
+  return dropins;
 }
 
 function loadCache() {
@@ -196,9 +208,9 @@ function render(court, generatedAt, scheduleSource) {
 // from the city's public "Gymnasium Schedule" Google Sheet each run.
 //
 // schedule[]   = FACILITY hours, indexed 0=Sun..6=Sat; [openMin,closeMin] or null.
-// dropins      = { sportId: week } drop-in OPEN-GYM blocks per sport; each week is
-//   indexed 0=Sun..6=Sat and each day is an array of [startMin,closeMin] blocks.
-//   Only basketball is populated for now (volleyball deferred — see build script).
+// dropins      = { sportId: week } drop-in OPEN-GYM blocks per sport (basketball,
+//   volleyball); each week is indexed 0=Sun..6=Sat and each day is an array of
+//   [startMin,closeMin] blocks (empty when none that day).
 // scheduleSource = "live" (parsed this run) | "cache" (last good).
 
 export const GENERATED_AT = ${JSON.stringify(generatedAt)};
@@ -229,32 +241,31 @@ export default SANBRUNO_COURTS;
 
 async function main() {
   console.log('Fetching San Bruno gym schedule from Google Sheets…');
-  let basketball;
+  let dropins;
   let scheduleSource;
 
   try {
     const res = await fetch(CSV_URL, { headers: { 'User-Agent': BROWSER_UA }, redirect: 'follow' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const csv = await res.text();
-    basketball = parseSchedule(csv);
+    dropins = parseSchedule(csv);
     scheduleSource = 'live';
-    fs.writeFileSync(CACHE_FILE, JSON.stringify({ basketball, scrapedAt: new Date().toISOString() }, null, 2) + '\n');
-    const blocks = basketball.reduce((n, d) => n + d.length, 0);
-    console.log(`  ✓ parsed ${blocks} basketball blocks across the week (live)`);
+    fs.writeFileSync(CACHE_FILE, JSON.stringify({ dropins, scrapedAt: new Date().toISOString() }, null, 2) + '\n');
+    const counts = SPORTS.map((s) => `${dropins[s.id].reduce((n, d) => n + d.length, 0)} ${s.id}`);
+    console.log(`  ✓ parsed ${counts.join(', ')} blocks across the week (live)`);
   } catch (e) {
     const cache = loadCache();
-    if (!cache || !cache.basketball) {
+    // Old caches stored a bare `basketball` week; wrap it into the dropins shape.
+    const cached = cache && (cache.dropins ||
+      (cache.basketball && { basketball: cache.basketball, volleyball: emptyWeek() }));
+    if (!cached) {
       throw new Error(`parse failed (${e.message}) and no cache available — data/sanbruno-court.js left unchanged`);
     }
-    basketball = cache.basketball;
+    dropins = cached;
     scheduleSource = 'cache';
     console.log(`  ↺ parse failed (${e.message}); using last-good cache from ${cache.scrapedAt || 'unknown'}`);
   }
 
-  // The sheet also carries volleyball/pickleball; only basketball is surfaced for
-  // now (scope: SF Rec & Park volleyball first). To enable, parse those sports in
-  // parseSchedule and populate them here alongside basketball.
-  const dropins = { basketball, volleyball: [[], [], [], [], [], [], []] };
   const court = { ...SAN_BRUNO, dropins };
   const generatedAt = new Date().toISOString();
   fs.writeFileSync(OUT_FILE, render(court, generatedAt, scheduleSource));
