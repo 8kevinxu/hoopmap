@@ -30,7 +30,15 @@ const VBALL_SVG =
   '<path d="M8,54 C36,55 64,69 79,92"/>' +
   '</g></svg>';
 
-const ballSvg = (sport) => (sport === 'volleyball' ? VBALL_SVG : BBALL_SVG);
+const PPONG_SVG =
+  '<svg viewBox="0 0 100 100" width="100%" height="100%">' +
+  '<circle cx="42" cy="40" r="34" fill="#d6322f" stroke="#7a1714" stroke-width="3"/>' +
+  '<rect x="36" y="68" width="12" height="26" rx="4" fill="#9c6b3b" stroke="#5e3d1d" stroke-width="3"/>' +
+  '<circle cx="78" cy="72" r="10" fill="#f4f6f8" stroke="#7a3b06" stroke-width="3"/>' +
+  '</svg>';
+
+const SPORT_SVG = { basketball: BBALL_SVG, volleyball: VBALL_SVG, pingpong: PPONG_SVG };
+const ballSvg = (sport) => SPORT_SVG[sport] || BBALL_SVG;
 
 function crowdDecoration(level) {
   if (level === 'empty') {

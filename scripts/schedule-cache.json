@@ -38,10 +38,44 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            540,
+            1260
+          ]
+        ],
+        [
+          [
+            540,
+            1260
+          ]
+        ],
+        [
+          [
+            540,
+            1260
+          ]
+        ],
+        [
+          [
+            540,
+            1260
+          ]
+        ],
+        [
+          [
+            540,
+            1260
+          ]
+        ]
       ]
     },
     "season": "Mission Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:04:59.789Z"
+    "scrapedAt": "2026-06-27T18:39:58.792Z"
   },
   "Moscone-Rec-Center-101": {
     "dropins": {
@@ -92,10 +126,19 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
       ]
     },
     "season": "Moscone Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:00.201Z"
+    "scrapedAt": "2026-06-27T18:39:59.134Z"
   },
   "St-Marys-Rec-Center-109": {
     "dropins": {
@@ -131,10 +174,29 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [
+          [
+            1020,
+            1260
+          ]
+        ],
+        [
+          [
+            1020,
+            1260
+          ]
+        ]
       ]
     },
     "season": "St. Mary's Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:00.778Z"
+    "scrapedAt": "2026-06-27T18:39:59.492Z"
   },
   "Upper-Noe-Rec-Center-112": {
     "dropins": {
@@ -160,10 +222,39 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            960,
+            1260
+          ]
+        ],
+        [
+          [
+            960,
+            1260
+          ]
+        ],
+        [
+          [
+            960,
+            1260
+          ]
+        ],
+        [
+          [
+            960,
+            1260
+          ]
+        ],
+        []
       ]
     },
     "season": "Upper Noe Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:01.372Z"
+    "scrapedAt": "2026-06-27T18:39:59.834Z"
   },
   "Hamilton-Rec-Center-93": {
     "dropins": {
@@ -209,10 +300,34 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            1020,
+            1200
+          ]
+        ],
+        [],
+        [
+          [
+            1020,
+            1200
+          ]
+        ],
+        [],
+        [
+          [
+            780,
+            960
+          ]
+        ]
       ]
     },
     "season": "Hamilton Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:01.968Z"
+    "scrapedAt": "2026-06-27T18:40:00.178Z"
   },
   "Eureka-Valley-Rec-Center-86": {
     "dropins": {
@@ -264,10 +379,19 @@
             780
           ]
         ]
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
       ]
     },
     "season": "Eureka Valley Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:02.403Z"
+    "scrapedAt": "2026-06-27T18:40:00.528Z"
   },
   "Richmond-Rec-Center-105": {
     "dropins": {
@@ -318,10 +442,44 @@
         ],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            840,
+            960
+          ]
+        ],
+        [
+          [
+            840,
+            1185
+          ]
+        ],
+        [
+          [
+            840,
+            1080
+          ]
+        ],
+        [
+          [
+            960,
+            1245
+          ]
+        ],
+        [
+          [
+            930,
+            1005
+          ]
+        ]
       ]
     },
     "season": "Richmond Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:03.161Z"
+    "scrapedAt": "2026-06-27T18:40:01.233Z"
   },
   "Sunset-Rec-Center-110": {
     "dropins": {
@@ -352,10 +510,44 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            1020,
+            1260
+          ]
+        ],
+        [
+          [
+            1020,
+            1260
+          ]
+        ],
+        [
+          [
+            1020,
+            1260
+          ]
+        ],
+        [
+          [
+            1020,
+            1260
+          ]
+        ],
+        [
+          [
+            1020,
+            1260
+          ]
+        ]
       ]
     },
     "season": "Sunset Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:03.534Z"
+    "scrapedAt": "2026-06-27T18:40:01.568Z"
   },
   "Palega-Rec-Center-103": {
     "dropins": {
@@ -411,10 +603,19 @@
             990
           ]
         ]
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
       ]
     },
     "season": "Palega Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:03.930Z"
+    "scrapedAt": "2026-06-27T18:40:01.926Z"
   },
   "Joseph-Lee-Rec-Center-95": {
     "dropins": {
@@ -465,10 +666,19 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
       ]
     },
     "season": "Joseph Lee Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:04.461Z"
+    "scrapedAt": "2026-06-27T18:40:02.270Z"
   },
   "Minnie-Love-Ward-Rec-Center-97": {
     "dropins": {
@@ -514,10 +724,44 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            960,
+            1230
+          ]
+        ],
+        [
+          [
+            960,
+            1230
+          ]
+        ],
+        [
+          [
+            960,
+            1230
+          ]
+        ],
+        [
+          [
+            960,
+            1230
+          ]
+        ],
+        [
+          [
+            930,
+            990
+          ]
+        ]
       ]
     },
     "season": "Minnie & Lovie Ward Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:05.051Z"
+    "scrapedAt": "2026-06-27T18:40:02.619Z"
   },
   "Bernal-Heights-Rec-Center-83": {
     "dropins": {
@@ -568,10 +812,19 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
       ]
     },
     "season": "Bernal Heights Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:05.432Z"
+    "scrapedAt": "2026-06-27T18:40:02.961Z"
   },
   "Betty-Ann-Ong-Recreation-Center-84": {
     "dropins": {
@@ -627,10 +880,44 @@
             990
           ]
         ]
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            810,
+            1200
+          ]
+        ],
+        [
+          [
+            630,
+            1200
+          ]
+        ],
+        [
+          [
+            810,
+            1200
+          ]
+        ],
+        [
+          [
+            810,
+            1200
+          ]
+        ],
+        [
+          [
+            690,
+            960
+          ]
+        ]
       ]
     },
     "season": "Betty Ann Ong Chinese Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:05.740Z"
+    "scrapedAt": "2026-06-27T18:40:03.315Z"
   },
   "Glen-Canyon-Park-Recreation-Center-89": {
     "dropins": {
@@ -691,10 +978,56 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            690,
+            750
+          ],
+          [
+            1050,
+            1170
+          ]
+        ],
+        [
+          [
+            600,
+            780
+          ],
+          [
+            900,
+            1080
+          ]
+        ],
+        [
+          [
+            810,
+            1080
+          ]
+        ],
+        [
+          [
+            660,
+            810
+          ],
+          [
+            960,
+            1170
+          ]
+        ],
+        [
+          [
+            540,
+            1020
+          ]
+        ]
       ]
     },
     "season": "Glen Canyon Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:06.071Z"
+    "scrapedAt": "2026-06-27T18:40:03.686Z"
   },
   "Herz-Recreation-Center-471": {
     "dropins": {
@@ -740,10 +1073,19 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
       ]
     },
     "season": "Herz Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:06.504Z"
+    "scrapedAt": "2026-06-27T18:40:04.038Z"
   },
   "Potrero-Hill-Rec-Center-275": {
     "dropins": {
@@ -795,9 +1137,43 @@
         [],
         [],
         []
+      ],
+      "pingpong": [
+        [],
+        [],
+        [
+          [
+            600,
+            1170
+          ]
+        ],
+        [
+          [
+            600,
+            1170
+          ]
+        ],
+        [
+          [
+            600,
+            1170
+          ]
+        ],
+        [
+          [
+            600,
+            1170
+          ]
+        ],
+        [
+          [
+            570,
+            990
+          ]
+        ]
       ]
     },
     "season": "Potrero Hill Rec Center Summer Schedule",
-    "scrapedAt": "2026-06-27T15:05:06.910Z"
+    "scrapedAt": "2026-06-27T18:40:04.388Z"
   }
 }

@@ -67,6 +67,12 @@ function bball(spec) {
 }
 const t = time; // shorthand for blocks below
 
+// Some centers run a sport continuously whenever they're open but don't publish
+// it as timed open-gym rows online (e.g. Palega's ping pong). Turn the facility
+// `schedule[]` into a one-block-per-open-day drop-in week so the sport is shown
+// across all open hours. Stays correct automatically if the hours change.
+const allOpenHoursWeek = (sched) => sched.map((h) => (h ? [[h[0], h[1]]] : []));
+
 // Verified indoor-basketball rec centers. `prop` matches DataSF property_name.
 const CENTERS = [
   {
@@ -165,7 +171,9 @@ const CENTERS = [
       fri: [[t(10), t(16)]],
       sat: [[t(9), t(10)], [t(10), t(11)], [t(11, 30), t(12, 30)]],
     }),
-    notes: 'Indoor gymnasium (also has outdoor courts).',
+    // Ping pong runs all open hours but isn't listed on sfrecpark.org — curate it.
+    pingpongAllHours: true,
+    notes: 'Indoor gymnasium (also has outdoor courts). Drop-in ping pong runs all open hours.',
   },
   {
     prop: 'Joseph Lee Rec Center',
@@ -319,6 +327,7 @@ function parseRange(text) {
 const SPORTS = [
   { id: 'basketball', match: /basketball/i },
   { id: 'volleyball', match: /volleyball/i },
+  { id: 'pingpong', match: /table tennis|ping[\s-]?pong/i },
 ];
 const emptyWeek = () => [[], [], [], [], [], [], []];
 const emptyDropins = () => Object.fromEntries(SPORTS.map((s) => [s.id, emptyWeek()]));
@@ -354,8 +363,10 @@ function mergeBlocks(blocks) {
   return out;
 }
 
-// Parse the Gymnasium row's drop-in blocks for every tracked sport from a
-// facility page's HTML. Returns { season, dropins: { sportId: [7][[s,e],...] },
+// Parse drop-in blocks for every tracked sport from a facility page's HTML.
+// Basketball/volleyball run in the Gymnasium, but table tennis lives in other
+// rooms (Multi Purpose Room, Auditorium), so we scan every room row and match
+// each activity to a sport. Returns { season, dropins: { sportId: [7][[s,e],...] },
 // bballCount } (day index 0=Sun..6=Sat).
 function parseGymDropins(html) {
   const $ = cheerio.load(html);
@@ -368,28 +379,24 @@ function parseGymDropins(html) {
   const colDay = cols.map((name) => DAY_INDEX[name.slice(0, 3).toLowerCase()]);
 
   const dropins = emptyDropins();
-  const gymRow = table
-    .find('th[scope="row"]')
-    .filter((_, th) => /gymnasium/i.test($(th).text()))
-    .first()
-    .closest('tr');
-
-  gymRow.find('td').each((i, td) => {
-    const day = colDay[i + 1]; // cols[0] is "Facility / Room"; cells start at Monday
-    if (day == null) return;
-    $(td).find('.item').each((_, item) => {
-      const activity = $(item).find('.activity').text();
-      // Exclude structured programs — keep only show-up-and-play sessions.
-      if (/league|class|clinic|camp|academy|practice|training|tournament/i.test(activity)) return;
-      const sport = SPORTS.find((s) => s.match.test(activity));
-      if (!sport) return;
-      const range = parseRange($(item).find('.time').text());
-      if (range) {
-        // Tag restricted sessions (wheelchair / women's / 55+) for in-app labeling.
-        const tag = blockTag(activity);
-        if (tag) range.push(tag);
-        dropins[sport.id][day].push(range);
-      }
+  table.find('th[scope="row"]').each((_, th) => {
+    $(th).closest('tr').find('td').each((i, td) => {
+      const day = colDay[i + 1]; // cols[0] is "Facility / Room"; cells start at Monday
+      if (day == null) return;
+      $(td).find('.item').each((_, item) => {
+        const activity = $(item).find('.activity').text();
+        // Exclude structured programs — keep only show-up-and-play sessions.
+        if (/league|class|clinic|camp|academy|practice|training|tournament/i.test(activity)) return;
+        const sport = SPORTS.find((s) => s.match.test(activity));
+        if (!sport) return;
+        const range = parseRange($(item).find('.time').text());
+        if (range) {
+          // Tag restricted sessions (wheelchair / women's / 55+) for in-app labeling.
+          const tag = blockTag(activity);
+          if (tag) range.push(tag);
+          dropins[sport.id][day].push(range);
+        }
+      });
     });
   });
 
@@ -469,6 +476,11 @@ async function main() {
       }
     }
     stats[chosen.source]++;
+    // Curated open-gym overrides for sports the city doesn't publish online.
+    if (c.pingpongAllHours) {
+      chosen.dropins = { ...chosen.dropins, pingpong: allOpenHoursWeek(c.sched) };
+      console.log(`    + ${c.name} — curated ping pong across all open hours`);
+    }
     c._dropins = chosen.dropins;
     c._scheduleSource = chosen.source;
   }
@@ -557,7 +569,7 @@ function render(courts, season, generatedAt) {
 // schedule[]   = FACILITY hours, indexed 0=Sun..6=Sat; [openMin,closeMin] or null.
 // dropins      = { sportId: week } drop-in OPEN-GYM blocks per sport; each week is
 //   indexed 0=Sun..6=Sat and each day is an array of [startMin,closeMin] blocks
-//   (empty when none that day). Sports: basketball, volleyball.
+//   (empty when none that day). Sports: basketball, volleyball, pingpong.
 // scheduleSource = "live" (scraped this run) | "cache" (last good) | "curated".
 
 export const GENERATED_AT = ${JSON.stringify(generatedAt)};

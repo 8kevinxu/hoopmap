@@ -45,6 +45,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 const SPORTS = [
   { id: 'basketball', match: /basketball/i },
   { id: 'volleyball', match: /volleyball/i },
+  { id: 'pingpong', match: /table tennis|ping[\s-]?pong/i },
 ];
 const emptyWeek = () => [[], [], [], [], [], [], []];
 
@@ -257,7 +258,10 @@ async function main() {
     const cache = loadCache();
     // Old caches stored a bare `basketball` week; wrap it into the dropins shape.
     const cached = cache && (cache.dropins ||
-      (cache.basketball && { basketball: cache.basketball, volleyball: emptyWeek() }));
+      (cache.basketball && {
+        ...Object.fromEntries(SPORTS.map((s) => [s.id, emptyWeek()])),
+        basketball: cache.basketball,
+      }));
     if (!cached) {
       throw new Error(`parse failed (${e.message}) and no cache available — data/sanbruno-court.js left unchanged`);
     }
